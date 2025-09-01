@@ -5,7 +5,12 @@
     "scripts": {
         "dev": "ts-node-dev --respawn --transpile-only src/server.ts",
         "build": "tsc",
-        "start": "node dist/server.js"
+        "start": "node dist/server.js",
+        "start:v2": "node dist/app/server.js",
+        "workers:bill-payments": "node dist/workers/pollers/billPaymentsPoller.js",
+        "workers:transfers": "node dist/workers/pollers/transfersPoller.js",
+        "workers:penalties": "node dist/workers/loans/penaltiesCron.js",
+        "workers:savings": "node dist/workers/savings/maturitiesWorker.js"
     },
     "dependencies": {
         "@joi/date": "^2.1.1",
@@ -21,7 +26,6 @@
         "dotenv": "^16.4.7",
         "express": "^4.18.2",
         "helmet": "^8.0.0",
-        "ioredis": "^5.7.0",
         "joi": "^17.13.3",
         "js-sha512": "^0.9.0",
         "jsonwebtoken": "^9.0.2",
