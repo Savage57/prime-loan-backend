@@ -36,6 +36,8 @@ export interface User {
     email_verified?: boolean;
     phone_verified?: boolean;
     signupBonusReceived: boolean;
+    ladderIndex?: number;
+    creditScore?: number;
     accountNo?: string;
     address?: string;
     wallet?: string;
@@ -111,6 +113,8 @@ export interface UPDATEUSER {
     email_verified?: boolean;
     phone_verified?: boolean;
     signupBonusReceived?: boolean;
+    ladderIndex?: number;
+    creditScore?: number;
     accountNo?: string;
     address?: string;
     pin?: string;
