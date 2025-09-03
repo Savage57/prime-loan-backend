@@ -9,159 +9,400 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
     });
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.transactionStatus = exports.payBill = exports.validateCustomer = exports.getBillerItems = exports.getBillerList = exports.getBillerCategories = void 0;
-const httpClient_1 = require("../utils/httpClient");
-const validateParams_1 = require("../utils/validateParams");
-const js_sha512_1 = require("js-sha512");
-const generateRef_1 = require("../utils/generateRef");
+exports.getPowerSubscriptions = exports.getBettingPlatforms = exports.getJambTypes = exports.getWaecTypes = exports.getInternetPlans = exports.getDataPlans = exports.getTvPackages = exports.verifyJambNumber = exports.verifySmileNumber = exports.verifyBettingNumber = exports.verifyPowerNumber = exports.verifyTvNumber = exports.cancelTransaction = exports.queryTransaction = exports.buyJamb = exports.buyInternet = exports.buyBetting = exports.buyPower = exports.buyTv = exports.buyWaec = exports.buyData = exports.buyAirtime = void 0;
+const paybills_service_1 = require("../services/paybills.service");
 const services_1 = require("../services");
-const { update } = new services_1.UserService();
+const validateParams_1 = require("../utils/validateParams");
+const interfaces_1 = require("../interfaces");
+const httpClient_1 = require("../utils/httpClient");
+const generateRef_1 = require("../utils/generateRef");
+const js_sha512_1 = require("js-sha512");
+const paybillsService = new paybills_service_1.PaybillsService();
+const { update, find } = new services_1.UserService();
 const { create: createTransaction } = new services_1.TransactionService();
-const getBillerCategories = (_req, res, next) => __awaiter(void 0, void 0, void 0, function* () {
+const bankTransfer = (_a) => __awaiter(void 0, [_a], void 0, function* ({ userId, amount, }) {
+    var _b, _c, _d, _e, _f, _g;
     try {
-        const response = yield (0, httpClient_1.httpClient)("/billspaymentstore/billercategory", "GET");
-        res.status(response.status || 200).json({ status: "success", data: response.data.data });
+        // 1. Find user
+        const user = yield find({ _id: userId }, "one");
+        if (!user || Array.isArray(user))
+            throw new Error(`User not found`);
+        // 2. Enquire user account
+        const userAccountRes = yield (0, httpClient_1.httpClient)(`/wallet2/account/enquiry?accountNumber=${user === null || user === void 0 ? void 0 : user.user_metadata.accountNo}`, "GET");
+        if (!userAccountRes.data)
+            throw new Error(`User account not found`);
+        const userAccountData = userAccountRes.data.data;
+        const userBalance = Number(userAccountData.accountBalance);
+        // 3. Enquire prime account (admin)
+        const adminAccountRes = yield (0, httpClient_1.httpClient)(`/wallet2/account/enquiry?`, "GET");
+        if (!adminAccountRes.data)
+            throw new Error("Prime account not found");
+        const adminAccountData = adminAccountRes.data.data;
+        // 4. Construct transfer payload
+        const ref = `Prime-Finance-${(0, generateRef_1.generateRandomString)(9)}`;
+        const transferBody = {
+            fromAccount: userAccountData.accountNo,
+            uniqueSenderAccountId: userAccountData.accountId,
+            fromClientId: userAccountData.clientId,
+            fromClient: userAccountData.client,
+            fromSavingsId: userAccountData.accountId,
+            toClientId: adminAccountData.clientId,
+            toClient: adminAccountData.client,
+            toSavingsId: adminAccountData.accountId,
+            toSession: adminAccountData.accountId,
+            toAccount: adminAccountData.accountNo,
+            toBank: "999999",
+            signature: js_sha512_1.sha512.hex(`${userAccountData.accountNo}${adminAccountData.accountNo}`),
+            amount: amount,
+            remark: "Paybills Payment",
+            transferType: "intra",
+            reference: ref,
+        };
+        // 5. Attempt transfer
+        const transferRes = yield (0, httpClient_1.httpClient)("/wallet2/transfer", "POST", transferBody);
+        return {
+            status: "success",
+            message: "Transfer completed successfully",
+            userBalance,
+            data: transferRes.data,
+        };
     }
     catch (error) {
-        next(error);
+        // Extract error details
+        const message = ((_c = (_b = error === null || error === void 0 ? void 0 : error.response) === null || _b === void 0 ? void 0 : _b.data) === null || _c === void 0 ? void 0 : _c.message) ||
+            ((_e = (_d = error === null || error === void 0 ? void 0 : error.response) === null || _d === void 0 ? void 0 : _d.data) === null || _e === void 0 ? void 0 : _e.error) ||
+            (error === null || error === void 0 ? void 0 : error.message) ||
+            "An unknown error occurred";
+        const statusCode = ((_f = error === null || error === void 0 ? void 0 : error.response) === null || _f === void 0 ? void 0 : _f.status) || 500;
+        const errorData = ((_g = error === null || error === void 0 ? void 0 : error.response) === null || _g === void 0 ? void 0 : _g.data) || null;
+        // Optional: log for debugging
+        console.error("Bank Transfer Error:", {
+            message,
+            statusCode,
+            errorData,
+        });
+        // Return structured error
+        throw {
+            status: "error",
+            message,
+            code: statusCode,
+            userBalance: null,
+            data: errorData,
+        };
     }
 });
-exports.getBillerCategories = getBillerCategories;
-const getBillerList = (req, res, next) => __awaiter(void 0, void 0, void 0, function* () {
-    try {
-        const { categoryName } = req.query;
-        (0, validateParams_1.validateRequiredParams)({ categoryName }, ["categoryName"]);
-        const response = yield (0, httpClient_1.httpClient)(`/billspaymentstore/billerlist?categoryName=${categoryName}`, "GET");
-        res.status(response.status || 200).json({ status: "success", data: response.data.data });
+const checkSufficientBalance = (user, amount) => __awaiter(void 0, void 0, void 0, function* () {
+    const userWallet = Number(user.user_metadata.wallet);
+    if (userWallet < amount) {
+        throw new Error("Insufficient Funds.");
     }
-    catch (error) {
-        next(error);
+    const walletBalance = yield paybillsService.CheckWalletBalance();
+    if (Number(walletBalance.balance) < Number(amount)) {
+        throw new Error("System currently busy. Try again later.");
     }
+    return walletBalance;
 });
-exports.getBillerList = getBillerList;
-const getBillerItems = (req, res, next) => __awaiter(void 0, void 0, void 0, function* () {
+const processTransaction = (req, res, next, serviceFn, serviceArgs, transactionDetails) => __awaiter(void 0, void 0, void 0, function* () {
     try {
-        const { billerId, divisionId, productId } = req.query;
-        (0, validateParams_1.validateRequiredParams)({ billerId, divisionId, productId }, ["billerId", "divisionId", "productId"]);
-        const response = yield (0, httpClient_1.httpClient)(`/billspaymentstore/billerItems?billerId=${billerId}&divisionId=${divisionId}&productId=${productId}`, "GET");
-        res.status(response.status || 200).json({ status: "success", data: response.data.data });
-    }
-    catch (error) {
-        next(error);
-    }
-});
-exports.getBillerItems = getBillerItems;
-const validateCustomer = (req, res, next) => __awaiter(void 0, void 0, void 0, function* () {
-    try {
-        const { customerId, divisionId, paymentItem, billerId } = req.query;
-        (0, validateParams_1.validateRequiredParams)({ customerId, divisionId, paymentItem, billerId }, ["customerId", "divisionId", "paymentItem", "billerId"]);
-        const response = yield (0, httpClient_1.httpClient)(`/billspaymentstore/customervalidate?divisionId=${divisionId}&paymentItem=${paymentItem}&customerId=${customerId}&billerId=${billerId}`, "GET");
-        res.status(response.status || 200).json({ status: "success", data: response.data.data });
-    }
-    catch (error) {
-        next(error);
-    }
-});
-exports.validateCustomer = validateCustomer;
-const payBill = (req, res, next) => __awaiter(void 0, void 0, void 0, function* () {
-    var _a;
-    try {
-        const { name, category, details, customerId, amount, reference, bank, division, paymentItem, productId, billerId, phoneNumber } = req.body;
+        const { amount } = req.body;
         const { user } = req;
-        console.log({ user });
-        if (!user || !user._id) {
-            return res.status(404).json({
-                status: "User not found.",
-                data: null
-            });
-        }
-        if (Number(user.user_metadata.wallet) < Number(amount)) {
-            return res.status(409).json({
-                status: "Insufficient Funds.",
-                data: null
-            });
-        }
-        const account = yield (0, httpClient_1.httpClient)(`/wallet2/account/enquiry?`, "GET");
-        console.log({ account, data: account.data.data });
-        const useraccount = yield (0, httpClient_1.httpClient)(`/wallet2/account/enquiry?accountNumber=${user === null || user === void 0 ? void 0 : user.user_metadata.accountNo}`, "GET");
-        console.log({ useraccount, data: useraccount.data.data });
-        if (account.data && useraccount.data) {
-            const { accountNo: userAccountNumber, accountBalance: userAccountBalance, accountId: userAccountId, client: userClient, clientId: userClientId, savingsProductName: userSavingsProductName } = useraccount.data.data;
-            const { accountNo, accountBalance, accountId, client, clientId, savingsProductName } = account.data.data;
-            const ref = `Prime-Finance-${(0, generateRef_1.generateRandomString)(9)}`;
-            if (userAccountBalance) {
-                yield update(user._id, "user_metadata.wallet", String(userAccountBalance));
-            }
-            const body = {
-                fromAccount: userAccountNumber,
-                uniqueSenderAccountId: userAccountId,
-                fromClientId: userClientId,
-                fromClient: userClient,
-                fromSavingsId: userAccountId,
-                // fromBvn: "Rolandpay-birght 221552585559",
-                toClientId: clientId,
-                toClient: client,
-                toSavingsId: accountId,
-                toSession: accountId,
-                // toBvn: "11111111111",
-                toAccount: accountNo,
-                toBank: "999999",
-                signature: js_sha512_1.sha512.hex(`${userAccountNumber}${accountNo}`),
-                amount,
-                remark: "Paybills",
-                transferType: "intra",
-                reference: ref
-            };
-            const response = yield (0, httpClient_1.httpClient)("/wallet2/transfer", "POST", body);
-            console.log({ response });
-            if (response.data && response.data.status === "00") {
-                // Call the payment API
-                const payResponse = yield (0, httpClient_1.httpClient)("/billspaymentstore/pay", "POST", req.body);
-                if (payResponse.data) {
-                    const newUser = yield update(user._id, "user_metadata.wallet", String(Number((_a = user === null || user === void 0 ? void 0 : user.user_metadata) === null || _a === void 0 ? void 0 : _a.wallet) - Number(amount)));
-                    const transactionStatus = payResponse.data.status === "00" ? "success" : "failed";
-                    // Insert transaction record into database
-                    const transaction = yield createTransaction(Object.assign({ name,
-                        category, type: "paybills", user: user._id, details, transaction_number: reference, amount,
-                        bank, receiver: customerId, account_number: customerId, outstanding: 0.0, session_id: reference, status: transactionStatus, message: payResponse.data.status }, (phoneNumber && { phoneNumber })));
-                    // Respond with cleaned-up data
-                    res.status(payResponse.status || 200).json({
-                        status: payResponse.data.message,
-                        data: Object.assign(Object.assign({}, payResponse.data.data), { // Only include essential data
-                            transaction // Transaction data from database
-                         })
-                    });
-                }
-            }
-            else {
-                res.status(400).json({
-                    status: "failed",
-                    message: "Service unavailable, try again later!",
-                });
-            }
-        }
-        else {
-            res.status(404).json({
-                status: "failed",
-                message: "Login, and try again",
-            });
-        }
+        if (!user || !user._id)
+            throw new Error("Invalid user");
+        yield checkSufficientBalance(user, amount);
+        const response = yield serviceFn(...serviceArgs);
+        const { status, userBalance } = yield bankTransfer({ userId: user._id, amount }); //uncomment later
+        // const status = "success"; //comment later
+        // const  userBalance = Number(user.user_metadata.wallet); //comment later
+        const updatedWallet = userBalance != null ? userBalance - amount : Number(user.user_metadata.wallet) - amount;
+        yield update(user._id, "user_metadata.wallet", String(updatedWallet));
+        const ref = `Prime-Finance-${(0, generateRef_1.generateRandomString)(9)}`;
+        const transaction = yield createTransaction({
+            name: transactionDetails.name,
+            category: transactionDetails.category,
+            type: "paybills",
+            user: user._id,
+            details: interfaces_1.StatusDescriptions[response.status],
+            transaction_number: response.orderid ? String(response.orderid) : ref,
+            amount,
+            outstanding: 0,
+            bank: transactionDetails.bank,
+            account_number: transactionDetails.account_number,
+            receiver: transactionDetails.receiver,
+            status: status || "error",
+            session_id: response.orderid ? String(response.orderid) : ref,
+        });
+        res.status(200).json({ status: "success", data: Object.assign(Object.assign({}, response), { transaction }), message: interfaces_1.StatusDescriptions[response.status] });
     }
     catch (error) {
-        console.error({ error });
+        console.log({ error });
         next(error);
     }
 });
-exports.payBill = payBill;
-const transactionStatus = (req, res, next) => __awaiter(void 0, void 0, void 0, function* () {
+const buyAirtime = (req, res, next) => {
+    (0, validateParams_1.validateRequiredParams)(req.body, ["amount", "mobileNumber", "mobileNetwork"]);
+    return processTransaction(req, res, next, paybillsService.BuyAirtime.bind(paybillsService), [req.body.amount, req.body.mobileNumber, req.body.mobileNetwork, req.body.bonusType], {
+        name: "Airtime Purchase",
+        category: "airtime",
+        bank: req.body.mobileNetwork,
+        account_number: req.body.mobileNumber,
+        receiver: req.body.mobileNumber,
+    });
+};
+exports.buyAirtime = buyAirtime;
+const buyData = (req, res, next) => {
+    (0, validateParams_1.validateRequiredParams)(req.body, ["dataPlan", "mobileNumber", "mobileNetwork", "amount"]);
+    return processTransaction(req, res, next, paybillsService.BuyData.bind(paybillsService), [req.body.dataPlan, req.body.mobileNumber, req.body.mobileNetwork], {
+        name: "Data Purchase",
+        category: "data",
+        bank: req.body.mobileNetwork,
+        account_number: req.body.mobileNumber,
+        receiver: req.body.mobileNumber,
+    });
+};
+exports.buyData = buyData;
+const buyWaec = (req, res, next) => {
+    (0, validateParams_1.validateRequiredParams)(req.body, ["examType", "phoneNo", "amount"]);
+    return processTransaction(req, res, next, paybillsService.BuyWaec.bind(paybillsService), [req.body.examType, req.body.phoneNo], {
+        name: "WAEC PIN Purchase",
+        category: "waec",
+        bank: req.body.examType,
+        account_number: req.body.phoneNo,
+        receiver: req.body.phoneNo,
+    });
+};
+exports.buyWaec = buyWaec;
+const buyTv = (req, res, next) => {
+    (0, validateParams_1.validateRequiredParams)(req.body, ["cableTV", "pkg", "smartCardNo", "phoneNo", "amount"]);
+    return processTransaction(req, res, next, paybillsService.BuyTv.bind(paybillsService), [req.body.cableTV, req.body.pkg, req.body.smartCardNo, req.body.phoneNo], {
+        name: "TV Subscription",
+        category: "tv",
+        bank: req.body.cableTV,
+        account_number: req.body.smartCardNo,
+        receiver: req.body.phoneNo,
+    });
+};
+exports.buyTv = buyTv;
+const buyPower = (req, res, next) => {
+    (0, validateParams_1.validateRequiredParams)(req.body, ["electricCompany", "meterType", "meterNo", "amount", "phoneNo"]);
+    return processTransaction(req, res, next, paybillsService.BuyPower.bind(paybillsService), [req.body.electricCompany, req.body.meterType, req.body.meterNo, req.body.amount, req.body.phoneNo], {
+        name: "Electricity Purchase",
+        category: "power",
+        bank: req.body.electricCompany,
+        account_number: req.body.meterNo,
+        receiver: req.body.phoneNo,
+    });
+};
+exports.buyPower = buyPower;
+const buyBetting = (req, res, next) => {
+    (0, validateParams_1.validateRequiredParams)(req.body, ["bettingCompany", "customerId", "amount"]);
+    return processTransaction(req, res, next, paybillsService.BuyBetting.bind(paybillsService), [req.body.bettingCompany, req.body.customerId, req.body.amount], {
+        name: "Betting Wallet Top-up",
+        category: "betting",
+        bank: req.body.bettingCompany,
+        account_number: req.body.customerId,
+        receiver: req.body.customerId,
+    });
+};
+exports.buyBetting = buyBetting;
+const buyInternet = (req, res, next) => {
+    (0, validateParams_1.validateRequiredParams)(req.body, ["mobileNetwork", "dataPlan", "mobileNumber", "amount"]);
+    return processTransaction(req, res, next, paybillsService.BuyInternet.bind(paybillsService), [req.body.mobileNetwork, req.body.dataPlan, req.body.mobileNumber], {
+        name: "Internet Purchase",
+        category: "internet",
+        bank: req.body.mobileNetwork,
+        account_number: req.body.mobileNumber,
+        receiver: req.body.mobileNumber,
+    });
+};
+exports.buyInternet = buyInternet;
+const buyJamb = (req, res, next) => {
+    (0, validateParams_1.validateRequiredParams)(req.body, ["examType", "phoneNo", "amount"]);
+    return processTransaction(req, res, next, paybillsService.BuyJamb.bind(paybillsService), [req.body.examType, req.body.phoneNo], {
+        name: "JAMB PIN Purchase",
+        category: "jamb",
+        bank: req.body.examType,
+        account_number: req.body.phoneNo,
+        receiver: req.body.phoneNo,
+    });
+};
+exports.buyJamb = buyJamb;
+// Query a Transaction by orderId
+const queryTransaction = (req, res, next) => __awaiter(void 0, void 0, void 0, function* () {
     try {
-        const { transactionId } = req.query;
-        (0, validateParams_1.validateRequiredParams)({ transactionId }, ["transactionId"]);
-        const response = yield (0, httpClient_1.httpClient)(`/billspaymentstore/transactionStatus?transactionId=${transactionId}`, "GET");
-        res.status(response.status || 200).json({ status: "success", data: response.data.data });
+        const { orderId } = req.params;
+        if (!orderId)
+            throw new Error("Missing orderId");
+        const response = yield paybillsService.QueryTransaction(Number(orderId));
+        res.status(200).json({ status: "success", data: response, message: interfaces_1.StatusDescriptions[response.status] });
     }
     catch (error) {
         next(error);
     }
 });
-exports.transactionStatus = transactionStatus;
+exports.queryTransaction = queryTransaction;
+// Cancel a Transaction by orderId
+const cancelTransaction = (req, res, next) => __awaiter(void 0, void 0, void 0, function* () {
+    try {
+        const { orderId } = req.params;
+        if (!orderId)
+            throw new Error("Missing orderId");
+        const response = yield paybillsService.CancelTransaction(Number(orderId));
+        res.status(200).json({ status: "success", data: response, message: interfaces_1.StatusDescriptions[response.status] });
+    }
+    catch (error) {
+        next(error);
+    }
+});
+exports.cancelTransaction = cancelTransaction;
+// Verify TV Subscription by Smartcard
+const verifyTvNumber = (req, res, next) => __awaiter(void 0, void 0, void 0, function* () {
+    try {
+        const { cableTV, smartCardNo } = req.query;
+        if (!cableTV || !smartCardNo)
+            throw new Error("Missing cableTV or smartCardNo");
+        const response = yield paybillsService.VerifyTvNumber(cableTV, Number(smartCardNo));
+        res.status(200).json({ status: "success", data: response });
+    }
+    catch (error) {
+        next(error);
+    }
+});
+exports.verifyTvNumber = verifyTvNumber;
+// Verify Power Meter Number
+const verifyPowerNumber = (req, res, next) => __awaiter(void 0, void 0, void 0, function* () {
+    try {
+        const { electricCompany, meterNo } = req.query;
+        if (!electricCompany || !meterNo)
+            throw new Error("Missing electricCompany or meterNo");
+        const response = yield paybillsService.VerifyPowerNumber(electricCompany, Number(meterNo));
+        res.status(200).json({ status: "success", data: response });
+    }
+    catch (error) {
+        next(error);
+    }
+});
+exports.verifyPowerNumber = verifyPowerNumber;
+// Verify Betting Customer ID
+const verifyBettingNumber = (req, res, next) => __awaiter(void 0, void 0, void 0, function* () {
+    try {
+        const { bettingCompany, customerId } = req.query;
+        if (!bettingCompany || !customerId)
+            throw new Error("Missing bettingCompany or customerId");
+        const response = yield paybillsService.VerifyBettingNumber(bettingCompany, Number(customerId));
+        res.status(200).json({ status: "success", data: response });
+    }
+    catch (error) {
+        next(error);
+    }
+});
+exports.verifyBettingNumber = verifyBettingNumber;
+// Verify Smile Number
+const verifySmileNumber = (req, res, next) => __awaiter(void 0, void 0, void 0, function* () {
+    try {
+        const { mobileNumber } = req.query;
+        if (!mobileNumber)
+            throw new Error("Missing mobileNumber");
+        const response = yield paybillsService.VerifySmileNumber(Number(mobileNumber));
+        res.status(200).json({ status: "success", data: response });
+    }
+    catch (error) {
+        next(error);
+    }
+});
+exports.verifySmileNumber = verifySmileNumber;
+// Verify JAMB Profile ID
+const verifyJambNumber = (req, res, next) => __awaiter(void 0, void 0, void 0, function* () {
+    try {
+        const { examType, profileId } = req.query;
+        if (!examType || !profileId)
+            throw new Error("Missing examType or profileId");
+        const response = yield paybillsService.VerifyJambNumber(examType, Number(profileId));
+        res.status(200).json({ status: "success", data: response });
+    }
+    catch (error) {
+        next(error);
+    }
+});
+exports.verifyJambNumber = verifyJambNumber;
+// Get available TV packages
+const getTvPackages = (req, res, next) => __awaiter(void 0, void 0, void 0, function* () {
+    try {
+        const response = yield paybillsService.GetTvPackages();
+        res.status(200).json({ status: "success", data: response });
+    }
+    catch (error) {
+        next(error);
+    }
+});
+exports.getTvPackages = getTvPackages;
+// Get available mobile data plans
+const getDataPlans = (req, res, next) => __awaiter(void 0, void 0, void 0, function* () {
+    try {
+        const response = yield paybillsService.GetDataPlans();
+        res.status(200).json({ status: "success", data: response });
+    }
+    catch (error) {
+        next(error);
+    }
+});
+exports.getDataPlans = getDataPlans;
+// Get internet plan options for Smile/Spectranet
+const getInternetPlans = (req, res, next) => __awaiter(void 0, void 0, void 0, function* () {
+    try {
+        const { mobileNetwork } = req.query;
+        // Validate mobileNetwork
+        if (typeof mobileNetwork !== "string" || !["smile-direct", "spectranet"].includes(mobileNetwork)) {
+            throw new Error("Invalid or missing mobileNetwork. Allowed values: 'smile-direct', 'spectranet'");
+        }
+        const response = yield paybillsService.GetInternetPlans(mobileNetwork);
+        res.status(200).json({ status: "success", data: response });
+    }
+    catch (error) {
+        next(error);
+    }
+});
+exports.getInternetPlans = getInternetPlans;
+// Get WAEC PIN types
+const getWaecTypes = (req, res, next) => __awaiter(void 0, void 0, void 0, function* () {
+    try {
+        const response = yield paybillsService.GetWaecTypes();
+        res.status(200).json({ status: "success", data: response });
+    }
+    catch (error) {
+        next(error);
+    }
+});
+exports.getWaecTypes = getWaecTypes;
+// Get JAMB PIN types
+const getJambTypes = (req, res, next) => __awaiter(void 0, void 0, void 0, function* () {
+    try {
+        const response = yield paybillsService.GetJambTypes();
+        res.status(200).json({ status: "success", data: response });
+    }
+    catch (error) {
+        next(error);
+    }
+});
+exports.getJambTypes = getJambTypes;
+// Get Betting Platforms
+const getBettingPlatforms = (req, res, next) => __awaiter(void 0, void 0, void 0, function* () {
+    try {
+        const response = yield paybillsService.GetBettingPlatforms();
+        res.status(200).json({ status: "success", data: response });
+    }
+    catch (error) {
+        next(error);
+    }
+});
+exports.getBettingPlatforms = getBettingPlatforms;
+// Get Power Subscription Companies
+const getPowerSubscriptions = (req, res, next) => __awaiter(void 0, void 0, void 0, function* () {
+    try {
+        const response = yield paybillsService.GetPowerSubscriptions();
+        res.status(200).json({ status: "success", data: response });
+    }
+    catch (error) {
+        next(error);
+    }
+});
+exports.getPowerSubscriptions = getPowerSubscriptions;

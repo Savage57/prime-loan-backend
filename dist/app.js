@@ -24,6 +24,9 @@ const exceptions_1 = require("./exceptions");
 const compression_1 = __importDefault(require("compression"));
 const cookie_parser_1 = __importDefault(require("cookie-parser"));
 const utils_1 = require("./utils");
+// Import enhanced routes
+const enhancedRoutes_1 = __importDefault(require("./routes/enhancedRoutes"));
+const adminRoutes_1 = __importDefault(require("./routes/adminRoutes"));
 exports.default = (app) => __awaiter(void 0, void 0, void 0, function* () {
     // Log to console using morgan if app is in development
     if (process.env.ENV === "dev")
@@ -43,5 +46,8 @@ exports.default = (app) => __awaiter(void 0, void 0, void 0, function* () {
     app.use("/api/paybills", paybillsRoutes_1.default);
     app.use("/api/loans", loanRoutes_1.default);
     app.use("/api/data", dataRoutes_1.default);
+    // Mount enhanced routes
+    app.use("/api/enhanced", enhancedRoutes_1.default);
+    app.use("/api/admin", adminRoutes_1.default);
     app.use(exceptions_1.errHandler);
 });

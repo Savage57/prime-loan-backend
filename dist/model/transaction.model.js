@@ -72,6 +72,10 @@ const transactionSchema = new mongoose_1.Schema({
         type: String,
         required: true, // Account number
     },
+    traceId: {
+        type: String,
+        required: false, // V2 addition for ledger correlation
+    },
 }, { timestamps: true });
 const Transaction = (0, mongoose_1.model)('transactions', transactionSchema);
 // Sync indexes with the database

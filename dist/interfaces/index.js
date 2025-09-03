@@ -19,3 +19,4 @@ __exportStar(require("./messages.interfaces"), exports);
 __exportStar(require("./transactions.interfaces"), exports);
 __exportStar(require("./users.interfaces"), exports);
 __exportStar(require("./commons.interfaces"), exports);
+__exportStar(require("./paybills.interfaces"), exports);

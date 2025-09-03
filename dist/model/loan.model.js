@@ -87,9 +87,13 @@ const LoanApplicationSchema = new mongoose_1.Schema({
     repayment_date: { type: String, required: true },
     loan_date: { type: String, required: true },
     loan_payment_status: { type: String, required: true },
+    credit_message: { type: String, required: true },
     credit_score: CreditScoreSchema,
     repayment_history: [RepaymentHistorySchema],
     lastInterestAdded: { type: String, required: false },
+    rejectionReason: { type: String, required: false },
+    debit_account: { type: String, required: true },
+    traceId: { type: String, required: false }, // V2 addition for ledger correlation
 }, { timestamps: true });
 // Create the LoanApplication model
 const LoanApplicationModel = (0, mongoose_1.model)('loans', LoanApplicationSchema);

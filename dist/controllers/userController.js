@@ -23,7 +23,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.walletAlerts = exports.transfer = exports.bankListing = exports.beneficiaryEnquiry = exports.accountEnquiry = exports.changePassword = exports.forgotPassword = exports.updatePasswordOrPin = exports.validateReset = exports.initiateReset = exports.logout = exports.login = exports.updateClientAccount = exports.ActivateAndDeactivateAdmin = exports.ActivateAndDeactivateUser = exports.getUsers = exports.getUser = exports.getAdmin = exports.createSuperAdminAccount = exports.createAdminAccount = exports.createClientAccount = void 0;
+exports.unlinkAccount = exports.linkAccount = exports.accountDetails = exports.confirmLinking = exports.initializeLinking = exports.walletAlerts = exports.transfer = exports.bankListing = exports.beneficiaryEnquiry = exports.accountEnquiry = exports.changePassword = exports.forgotPassword = exports.updatePasswordOrPin = exports.validateReset = exports.initiateReset = exports.logout = exports.login = exports.updateClientAccount = exports.ActivateAndDeactivateAdmin = exports.ActivateAndDeactivateUser = exports.getUsers = exports.getUser = exports.getAdmin = exports.createSuperAdminAccount = exports.createAdminAccount = exports.createClientAccount = void 0;
 const validateParams_1 = require("../utils/validateParams");
 const convertDate_1 = require("../utils/convertDate");
 const httpClient_1 = require("../utils/httpClient");
@@ -34,30 +34,106 @@ const utils_1 = require("../utils");
 const convertDate_2 = require("../utils/convertDate");
 const utils_2 = require("../utils");
 const jsonwebtoken_1 = __importDefault(require("jsonwebtoken"));
+const axios_1 = __importDefault(require("axios"));
 const constants_1 = require("../constants");
 const config_1 = require("../config");
 const loanReminder_1 = require("../jobs/loanReminder");
+const generateRef_1 = require("../utils/generateRef");
 function isUser(object, value) {
     return value in object;
 }
 const { find, findByEmail, create, update } = new services_1.UserService();
 const { create: createTransaction } = new services_1.TransactionService();
+const signupBonus = (_a) => __awaiter(void 0, [_a], void 0, function* ({ userId, amount, }) {
+    var _b, _c, _d, _e, _f, _g;
+    try {
+        // 1. Find user
+        const user = yield find({ _id: userId }, "one");
+        if (!user || Array.isArray(user))
+            throw new Error(`User not found`);
+        // 2. Enquire user account
+        const userAccountRes = yield (0, httpClient_1.httpClient)(`/wallet2/account/enquiry?accountNumber=${user === null || user === void 0 ? void 0 : user.user_metadata.accountNo}`, "GET");
+        if (!userAccountRes.data)
+            throw new Error(`User account not found`);
+        const userAccountData = userAccountRes.data.data;
+        const userBalance = Number(userAccountData.accountBalance);
+        // 3. Enquire prime account (admin)
+        const adminAccountRes = yield (0, httpClient_1.httpClient)(`/wallet2/account/enquiry?`, "GET");
+        if (!adminAccountRes.data)
+            throw new Error("Prime account not found");
+        const adminAccountData = adminAccountRes.data.data;
+        // 4. Construct transfer payload
+        const ref = `Prime-Finance-${(0, generateRef_1.generateRandomString)(9)}`;
+        const transferBody = {
+            fromAccount: adminAccountData.accountNo,
+            uniqueSenderAccountId: "",
+            fromClientId: adminAccountData.clientId,
+            fromClient: adminAccountData.client,
+            fromSavingsId: adminAccountData.accountId,
+            toClientId: userAccountData.clientId,
+            toClient: userAccountData.client,
+            toSavingsId: userAccountData.accountId,
+            toSession: userAccountData.accountId,
+            toAccount: userAccountData.accountNo,
+            toBank: "999999",
+            signature: js_sha512_1.sha512.hex(`${adminAccountData.accountNo}${userAccountData.accountNo}`),
+            amount: amount,
+            remark: "Signup Bonus",
+            transferType: "intra",
+            reference: ref,
+        };
+        // 5. Attempt transfer
+        const transferRes = yield (0, httpClient_1.httpClient)("/wallet2/transfer", "POST", transferBody);
+        return {
+            status: "success",
+            message: "Transfer completed successfully",
+            userBalance,
+            data: transferRes.data,
+        };
+    }
+    catch (error) {
+        // Extract error details
+        const message = ((_c = (_b = error === null || error === void 0 ? void 0 : error.response) === null || _b === void 0 ? void 0 : _b.data) === null || _c === void 0 ? void 0 : _c.message) ||
+            ((_e = (_d = error === null || error === void 0 ? void 0 : error.response) === null || _d === void 0 ? void 0 : _d.data) === null || _e === void 0 ? void 0 : _e.error) ||
+            (error === null || error === void 0 ? void 0 : error.message) ||
+            "An unknown error occurred";
+        const statusCode = ((_f = error === null || error === void 0 ? void 0 : error.response) === null || _f === void 0 ? void 0 : _f.status) || 500;
+        const errorData = ((_g = error === null || error === void 0 ? void 0 : error.response) === null || _g === void 0 ? void 0 : _g.data) || null;
+        // Optional: log for debugging
+        console.error("Bank Transfer Error:", {
+            message,
+            statusCode,
+            errorData,
+        });
+        // Return structured error
+        throw {
+            status: "error",
+            message,
+            code: statusCode,
+            userBalance: null,
+            data: errorData,
+        };
+    }
+});
 const createClientAccount = (req, res, next) => __awaiter(void 0, void 0, void 0, function* () {
     try {
-        const { email, name, surname, password, phone, bvn, nin, dob } = req.body;
+        const { email, name, surname, password, phone, bvn, nin, dob, pin } = req.body;
         const duplicateEmail = yield findByEmail(email);
         const duplicateNumber = yield find({ user_metadata: { phone } }, "one");
+        const duplicateNIN = yield find({ user_metadata: { nin } }, "one");
         if (duplicateEmail)
-            throw new exceptions_1.ConflictError(`A user already exists with the email ${email}`);
+            throw new exceptions_1.ConflictError(`A user already exists with the email: ${email}`);
         if (duplicateNumber)
-            throw new exceptions_1.ConflictError(`A user already exists with the phone number ${phone}`);
+            throw new exceptions_1.ConflictError(`A user already exists with the phone number: ${phone}`);
+        if (duplicateNIN)
+            throw new exceptions_1.ConflictError(`A user already exists with the NIN: ${nin}`);
         req.body.password = (0, utils_1.encryptPassword)(password);
         const apiUrl = `/wallet2/client/create?bvn=${bvn}&dateOfBirth=${(0, convertDate_1.convertDate)(dob)}`;
         const response = yield (0, httpClient_1.httpClient)(apiUrl, "POST", {});
         if (response.data && response.data.status === "00") {
             const user = yield create({
                 password: req.body.password,
-                user_metadata: { email, first_name: name, surname, phone, bvn, nin, dateOfBirth: dob, accountNo: response.data.data.accountNo },
+                user_metadata: { email, first_name: name, surname, phone, bvn, nin, dateOfBirth: dob, accountNo: response.data.data.accountNo, pin },
                 role: "user",
                 confirmation_sent_at: (0, convertDate_2.getCurrentTimestamp)(),
                 confirmed_at: "",
@@ -68,6 +144,13 @@ const createClientAccount = (req, res, next) => __awaiter(void 0, void 0, void 0
                 is_super_admin: false,
                 status: "active"
             });
+            const counter = yield counterService.findOneAndUpdate({ name: 'signupBonus' }, { $inc: { count: 1 } });
+            if (counter.count <= 100) {
+                yield signupBonus({ userId: user._id, amount: "50" });
+                yield update(user._id, "user_metadata.signupBonusReceived", true);
+            }
+            yield (0, loanReminder_1.sendEmail)(user.email, 'Registration Successful', `Dear ${user.user_metadata.first_name}, \n Welcome to Prime Finance, Your registration was successful. \n Thank you for using Prime Finance!`);
+            yield (0, loanReminder_1.sendEmail)("info@primefinance.live, primefinancials68@gmail.com", 'New User Registered', `New user ${user.user_metadata.first_name} ${user.user_metadata.surname}, just registered!`);
             return res.status(201).json({ status: "success", data: Object.assign(Object.assign({}, response.data.data), { user }) });
         }
         return res.status(response.status).json({ status: "failed", message: response.data.message });
@@ -266,6 +349,7 @@ const login = (req, res, next) => __awaiter(void 0, void 0, void 0, function* ()
         refreshTokens.push(refreshToken);
         foundUser.refresh_tokens = refreshTokens;
         yield foundUser.save();
+        yield (0, loanReminder_1.sendEmail)(foundUser.email, 'Login Successful', `Dear ${foundUser.user_metadata.first_name}, There has been a new login on your account, if this wasn't you contact contact support at info@primefinance.live else you should ignore this mail. \n Thank you for using Prime Finance!`);
         return res
             .cookie("jwt", refreshToken, {
             httpOnly: true,
@@ -515,9 +599,9 @@ const bankListing = (req, res, next) => __awaiter(void 0, void 0, void 0, functi
 });
 exports.bankListing = bankListing;
 const transfer = (req, res, next) => __awaiter(void 0, void 0, void 0, function* () {
-    var _a;
+    var _a, _b, _c;
     try {
-        const { fromAccount, fromClientId, fromClient, fromSavingsId, fromBvn, toClient, toSession, toBvn, toKyc, bank, toAccount, toBank, toSavingsId, amount, remark, reference, } = req.body;
+        const { fromAccount, fromClientId, fromClient, toClientId, fromSavingsId, fromBvn, toClient, toSession, toBvn, toKyc, bank, toAccount, toBank, toSavingsId, amount, remark, reference, } = req.body;
         console.log(Object.assign({}, req.body));
         const { user } = req;
         if (!user || !user._id) {
@@ -533,28 +617,38 @@ const transfer = (req, res, next) => __awaiter(void 0, void 0, void 0, function*
             });
         }
         const apiUrl = `/wallet2/transfer`;
-        const response = yield (0, httpClient_1.httpClient)(apiUrl, "POST", {
-            fromAccount,
-            uniqueSenderAccountId: "",
-            fromClientId,
+        const response = yield (0, httpClient_1.httpClient)(apiUrl, "POST", Object.assign(Object.assign({ fromAccount, uniqueSenderAccountId: toBank == '999999' ? fromSavingsId : "", fromClientId,
             fromClient,
-            fromSavingsId,
-            fromBvn,
-            toClient,
+            fromSavingsId }, (toBank == '999999' ? { toClientId } : { fromBvn, toBvn, toKyc })), { toClient,
             toSession,
-            toBvn,
-            toKyc,
             toAccount,
             toSavingsId,
-            toBank,
-            signature: js_sha512_1.sha512.hex(`${fromAccount}${toAccount}`),
-            amount,
-            remark,
-            transferType: "inter",
-            reference
-        });
+            toBank, signature: js_sha512_1.sha512.hex(`${fromAccount}${toAccount}`), amount,
+            remark, transferType: toBank == '999999' ? "intra" : "inter", reference }));
         if (response.data && response.data.status === "00") {
-            const data = yield update(user._id, "user_metadata.wallet", String(Number((_a = user === null || user === void 0 ? void 0 : user.user_metadata) === null || _a === void 0 ? void 0 : _a.wallet) - Number(amount)));
+            yield update(user._id, "user_metadata.wallet", String(Number((_a = user === null || user === void 0 ? void 0 : user.user_metadata) === null || _a === void 0 ? void 0 : _a.wallet) - Number(amount)));
+            if (toBank == '999999') {
+                const beneficairy = yield find({ "user_metadata.accountNo": toAccount }, "one");
+                if (beneficairy && !Array.isArray(beneficairy) && beneficairy._id) {
+                    yield update(beneficairy._id, "user_metadata.wallet", String(Number((_b = beneficairy === null || beneficairy === void 0 ? void 0 : beneficairy.user_metadata) === null || _b === void 0 ? void 0 : _b.wallet) + Number(amount)));
+                    yield createTransaction({
+                        name: "Deposit-" + reference,
+                        category: "credit",
+                        type: "transfer",
+                        user: beneficairy._id,
+                        details: remark,
+                        transaction_number: `${response.data.data.txnId}-recieved` || "no-txnId",
+                        amount,
+                        bank,
+                        receiver: toClient,
+                        account_number: toAccount,
+                        outstanding: 0.0,
+                        session_id: `${response.data.data.sessionId}-recieved` || "no-sessionId",
+                        status: "success"
+                    });
+                    yield (0, loanReminder_1.sendEmail)(user.email, 'Wallet Alert – Funds Credited', `Dear ${beneficairy.user_metadata.first_name},\n\nYour wallet has been credited with ${amount} from ${(_c = user === null || user === void 0 ? void 0 : user.user_metadata) === null || _c === void 0 ? void 0 : _c.first_name}.\n\nTransaction Details:\n- Amount: ${amount}\n- Reference: ${reference}\n- Originator Account Name: ${fromClient}\n- Originator Account Number: ${fromAccount}\n\nThank you for using Prime Finance!`);
+                }
+            }
             const transaction = yield createTransaction({
                 name: "Withdrawal-" + reference,
                 category: "debit",
@@ -570,7 +664,11 @@ const transfer = (req, res, next) => __awaiter(void 0, void 0, void 0, function*
                 session_id: response.data.data.sessionId || "no-sessionId",
                 status: "success"
             });
+            yield (0, loanReminder_1.sendEmail)(user.email, 'Withdrawal Successful', `Dear ${user.user_metadata.first_name},\n\nYour withdrawal of ${amount} has been successfully processed.\n\nTransaction Details:\n- Amount: ${amount}\n- Reference: ${reference}\n- To Account: ${toAccount}\n- Bank: ${bank}\n\nThank you for using Prime Finance!`);
             res.status(response.status).json({ status: "success", data: Object.assign(Object.assign({}, response.data.data), { transaction }) });
+        }
+        else {
+            yield (0, loanReminder_1.sendEmail)(user.email, 'Withdrawal Failed', `Dear ${user.user_metadata.first_name},\n\nYour withdrawal of ${amount} has failed.\n\nReason: ${response.data.message} \n\nPlease try again or contact support if the issue persists.\n\nThank you for using Prime Finance!`);
         }
         res.status(400).json({ status: "failed", message: response.data.message });
     }
@@ -611,12 +709,146 @@ const walletAlerts = (req, res) => __awaiter(void 0, void 0, void 0, function* (
             session_id: body.session_id,
             status: "success",
         });
-        console.log({ data });
+        yield (0, loanReminder_1.sendEmail)(user.email, 'Wallet Alert – Funds Credited', `Dear ${user.user_metadata.first_name},\n\nYour wallet has been credited with ${body.amount} from ${body.originator_account_name}.\n\nTransaction Details:\n- Amount: ${body.amount}\n- Reference: ${body.reference}\n- Originator Account Name: ${body.originator_account_name}\n- Originator Account Number: ${body.originator_account_number}\n\nThank you for using Prime Finance!`);
         return res.status(200).json({ status: "Success", data });
     }
     catch (error) {
         console.error("Error handling wallet alerts:", error);
-        res.status(400).json({ status: 400, message: error.message });
+        res.status(400).json({ status: "error", message: error.message });
     }
 });
 exports.walletAlerts = walletAlerts;
+const initializeLinking = (req, res, next) => __awaiter(void 0, void 0, void 0, function* () {
+    const url = `https://api.withmono.com/v2/accounts/initiate`;
+    const headers = {
+        "accept": "application/json",
+        "content-type": "application/json",
+        "mono-sec-key": "live_sk_axio44pdonk6lb6rdhxa",
+    };
+    const options = {
+        url,
+        method: "POST",
+        headers,
+        data: Object.assign({}, req.body)
+    };
+    try {
+        const response = yield (0, axios_1.default)(options);
+        if (![200, 202].includes(response.status)) {
+            throw new Error(`initialize link: ${response.data.message}`);
+        }
+        res.status(200).json({ status: "success", data: response.data.data });
+    }
+    catch (error) {
+        console.log({ error });
+        next(error);
+    }
+});
+exports.initializeLinking = initializeLinking;
+const confirmLinking = (req, res, next) => __awaiter(void 0, void 0, void 0, function* () {
+    const url = `https://api.withmono.com/v2/accounts/auth`;
+    const headers = {
+        "accept": "application/json",
+        "content-type": "application/json",
+        "mono-sec-key": "live_sk_axio44pdonk6lb6rdhxa",
+    };
+    const options = {
+        url,
+        method: "POST",
+        headers,
+        data: Object.assign({}, req.body)
+    };
+    try {
+        const response = yield (0, axios_1.default)(options);
+        if (![200, 202].includes(response.status)) {
+            throw new Error(`confirm link: ${response.data.message}`);
+        }
+        res.status(200).json({ status: "success", data: response.data.data });
+    }
+    catch (error) {
+        console.log({ error });
+        next(error);
+    }
+});
+exports.confirmLinking = confirmLinking;
+const accountDetails = (req, res, next) => __awaiter(void 0, void 0, void 0, function* () {
+    const { id } = req.params;
+    if (!id) {
+        return res.status(400).json({ message: "Account ID is required" });
+    }
+    const url = `https://api.withmono.com/v2/accounts/${id}`;
+    const headers = {
+        "accept": "application/json",
+        "content-type": "application/json",
+        "mono-sec-key": "live_sk_axio44pdonk6lb6rdhxa",
+    };
+    const options = {
+        url,
+        method: "GET",
+        headers,
+    };
+    try {
+        const response = yield (0, axios_1.default)(options);
+        if (![200, 202].includes(response.status)) {
+            throw new Error(`account details: ${response.data.message}`);
+        }
+        res.status(200).json({ status: "success", data: response.data.data });
+    }
+    catch (error) {
+        console.log({ error });
+        next(error);
+    }
+});
+exports.accountDetails = accountDetails;
+const linkAccount = (req, res, next) => __awaiter(void 0, void 0, void 0, function* () {
+    try {
+        const { user } = req;
+        if (!user) {
+            throw new exceptions_1.UnauthorizedError("Unauthorized! Please log in as a user to continue");
+        }
+        const newLinkedAccounts = [...((user === null || user === void 0 ? void 0 : user.linked_accounts) || []), req.body];
+        const updatedUser = yield update(user._id, "linked_accounts", newLinkedAccounts);
+        console.log({ updatedUser });
+        return res.status(200).json({ status: "success", data: { user: updatedUser } });
+    }
+    catch (error) {
+        console.log({ error });
+        next(error);
+    }
+});
+exports.linkAccount = linkAccount;
+const unlinkAccount = (req, res, next) => __awaiter(void 0, void 0, void 0, function* () {
+    const { id } = req.params;
+    if (!id) {
+        return res.status(400).json({ message: "Account ID is required" });
+    }
+    const url = `https://api.withmono.com/v2/accounts/${id}/unlink`;
+    const headers = {
+        "accept": "application/json",
+        "content-type": "application/json",
+        "mono-sec-key": "live_sk_axio44pdonk6lb6rdhxa",
+    };
+    const options = {
+        url,
+        method: "POST",
+        headers,
+    };
+    try {
+        const response = yield (0, axios_1.default)(options);
+        if (![200, 202].includes(response.status)) {
+            throw new Error(`unlinking account: ${response.data.message}`);
+        }
+        const { user } = req;
+        if (!user) {
+            throw new exceptions_1.UnauthorizedError("Unauthorized! Please log in as a user to continue");
+        }
+        const linked_accounts = ((user === null || user === void 0 ? void 0 : user.linked_accounts) || []).filter((la) => la.id !== req.params.id);
+        const updatedUser = yield update(user._id, "linked_accounts", linked_accounts);
+        console.log({ updatedUser });
+        return res.status(200).json({ status: "success", data: { user: updatedUser } });
+    }
+    catch (error) {
+        console.log({ error });
+        next(error);
+    }
+});
+exports.unlinkAccount = unlinkAccount;

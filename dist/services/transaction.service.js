@@ -75,6 +75,19 @@ class TransactionService {
         });
     }
     ;
+    createWithTrace(transactionData) {
+        return __awaiter(this, void 0, void 0, function* () {
+            const newTransaction = yield model_1.TransactionModel.create(transactionData);
+            return newTransaction;
+        });
+    }
+    ;
+    findByTraceId(traceId) {
+        return __awaiter(this, void 0, void 0, function* () {
+            return yield model_1.TransactionModel.find({ traceId }).sort({ createdAt: -1 });
+        });
+    }
+    ;
 }
 exports.TransactionService = TransactionService;
 ;

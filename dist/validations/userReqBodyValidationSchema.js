@@ -3,7 +3,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.changePasswordSchema = exports.updateUserSchema = exports.activateAdminReqBodySchema = exports.activateUserReqBodySchema = exports.loginReqBodySchema = exports.walletAlertsSchema = exports.transferSchema = exports.createAdminAccountSchema = exports.createClientAccountSchema = void 0;
+exports.confirmAccountLinking = exports.initiateAccountLinking = exports.linkedAccountSchema = exports.changePasswordSchema = exports.updateUserSchema = exports.activateAdminReqBodySchema = exports.activateUserReqBodySchema = exports.loginReqBodySchema = exports.walletAlertsSchema = exports.transferSchema = exports.createAdminAccountSchema = exports.createClientAccountSchema = void 0;
 const joi_1 = __importDefault(require("joi"));
 const date_1 = __importDefault(require("@joi/date"));
 joi_1.default.extend(date_1.default);
@@ -30,6 +30,11 @@ exports.createClientAccountSchema = joi_1.default.object({
         "string.empty": "BVN is required",
         "string.length": "BVN must be exactly 11 digits",
         "string.pattern.base": "BVN must contain only digits",
+    }),
+    pin: joi_1.default.string().length(4).pattern(/^\d+$/).required().messages({
+        "string.empty": "PIN is required",
+        "string.length": "PIN must be exactly 4 digits",
+        "string.pattern.base": "PIN must contain only digits",
     }),
     nin: joi_1.default.string().length(11).pattern(/^\d+$/).required().messages({
         "string.empty": "NIN is required",
@@ -77,6 +82,7 @@ exports.transferSchema = joi_1.default.object({
     fromBvn: joi_1.default.string().required().messages({
         "string.empty": "From BVN is required",
     }),
+    toClientId: joi_1.default.string(),
     toClient: joi_1.default.string().required().messages({
         "string.empty": "To Client is required",
     }),
@@ -123,7 +129,7 @@ exports.walletAlertsSchema = joi_1.default.object({
     session_id: joi_1.default.string().required(),
 });
 exports.loginReqBodySchema = joi_1.default.object({
-    password: joi_1.default.string().min(8).required(),
+    password: joi_1.default.string().min(6).required(),
     email: joi_1.default.string().email(),
 });
 exports.activateUserReqBodySchema = joi_1.default.object({
@@ -146,4 +152,26 @@ exports.changePasswordSchema = joi_1.default.object({
         "string.empty": "New password is required",
         "string.min": "New password must be at least 8 characters long",
     }),
+});
+exports.linkedAccountSchema = joi_1.default.object({
+    id: joi_1.default.string().required(),
+    name: joi_1.default.string().required(),
+    email: joi_1.default.string().email().required(),
+    ref: joi_1.default.string().required(),
+    bank: joi_1.default.string().required(),
+    account_number: joi_1.default.string().required(),
+});
+exports.initiateAccountLinking = joi_1.default.object({
+    customer: joi_1.default.object({
+        name: joi_1.default.string().required(),
+        email: joi_1.default.string().email().required(),
+    }).required(),
+    meta: joi_1.default.object({
+        ref: joi_1.default.string().required(),
+    }).required(),
+    scope: joi_1.default.string().valid("auth").required(),
+    redirect_url: joi_1.default.string().uri().required(),
+});
+exports.confirmAccountLinking = joi_1.default.object({
+    code: joi_1.default.string().required(),
 });

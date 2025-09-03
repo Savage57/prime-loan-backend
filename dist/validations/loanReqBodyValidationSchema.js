@@ -22,6 +22,7 @@ exports.createClientLoanSchema = joi_1.default.object({
     bvn: joi_1.default.string().length(11).required().label("BVN"),
     phone: joi_1.default.string().required().label("Phone Number"),
     address: joi_1.default.string().required().label("Address"),
+    // debit_account: Joi.string().required().label("Link Debit Mandate"),
     company: joi_1.default.string().required().label("Company"),
     company_address: joi_1.default.string().required().label("Company Address"),
     annual_income: joi_1.default.string().required().label("Annual Income"),
@@ -55,6 +56,7 @@ exports.updateLoanAmountSchema = joi_1.default.object({
 });
 exports.rejectLoanSchema = joi_1.default.object({
     transactionId: joi_1.default.string().required().label("Transaction ID"),
+    reason: joi_1.default.string().required().label("Reason For Rejection"),
 });
 exports.loanTransactionStatusSchema = joi_1.default.object({
     transactionId: joi_1.default.string().required().label("Transaction ID"),

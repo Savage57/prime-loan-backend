@@ -21,8 +21,11 @@ const config_1 = require("../config");
 const generateRef_1 = require("../utils/generateRef");
 const httpClient_1 = require("../utils/httpClient");
 const js_sha512_1 = require("js-sha512");
+const ledger_service_1 = require("../services/ledger.service");
+const uuid_1 = require("../utils/uuid");
+const money_1 = require("../utils/money");
+const config_2 = require("../config");
 const mongoose_1 = __importDefault(require("mongoose"));
-console.log({ EMAIL_USERNAME: config_1.EMAIL_USERNAME, EMAIL_PASSWORD: config_1.EMAIL_PASSWORD });
 const transporter = nodemailer_1.default.createTransport({
     host: "smtp.mailgun.org",
     port: 465, // Use 587 for STARTTLS, 465 for SSL/TLS
@@ -34,44 +37,14 @@ const transporter = nodemailer_1.default.createTransport({
 });
 const { create: createTransaction } = new services_1.TransactionService();
 const { find, update } = new services_1.UserService();
-const { find: findLoan, update: updateLoan } = new services_1.LoanService();
+const { find: findLoan, update: updateLoan, getOverdueLoans, addRepaymentHistory } = new services_1.LoanService();
 function checkLoansAndSendEmails() {
     return __awaiter(this, void 0, void 0, function* () {
         var _a, _b;
         try {
-            console.log('Checking overdue loans');
-            const today = new Date();
-            const formattedToday = today.toISOString().split("T")[0];
-            const overdueLoans = yield findLoan({
-                $expr: {
-                    $and: [
-                        {
-                            $lt: [
-                                {
-                                    $dateFromString: {
-                                        dateString: "$repayment_date",
-                                        format: "%b %d, %Y",
-                                        timezone: "UTC"
-                                    }
-                                },
-                                {
-                                    $dateFromParts: {
-                                        year: { $year: "$$NOW" },
-                                        month: { $month: "$$NOW" },
-                                        day: { $dayOfMonth: "$$NOW" },
-                                        timezone: "UTC"
-                                    }
-                                }
-                            ]
-                        },
-                        { $gt: ["$outstanding", 0] },
-                        { $eq: ["$status", "accepted"] }
-                    ]
-                }
-            }, "many");
+            const overdueLoans = yield getOverdueLoans();
             console.log({ overdueLoans });
-            if (!overdueLoans || !Array.isArray(overdueLoans) || overdueLoans.length <= 0) {
-                console.log("No overdue loans found.");
+            if (!overdueLoans || overdueLoans.length <= 0) {
                 return;
             }
             for (const loan of overdueLoans) {
@@ -89,8 +62,9 @@ function checkLoansAndSendEmails() {
                         throw new Error("Admin account not found");
                     const adminAccountData = adminAccountRes.data.data;
                     const ref = `Prime-Finance-${(0, generateRef_1.generateRandomString)(9)}`;
+                    const traceId = uuid_1.UuidService.generateTraceId();
                     // Add overdue fee before repayment attempt
-                    yield addOnePercentToOverdueLoan(loan);
+                    yield addOnePercentToOverdueLoan(loan, traceId);
                     const deductionAmount = userBalance >= loan.outstanding ? loan.outstanding : userBalance;
                     const remainingOutstanding = loan.outstanding - deductionAmount;
                     if (deductionAmount > 0) {
@@ -115,16 +89,28 @@ function checkLoansAndSendEmails() {
                         const transferRes = yield (0, httpClient_1.httpClient)("/wallet2/transfer", "POST", transferBody);
                         const transactionStatus = ((_a = transferRes.data) === null || _a === void 0 ? void 0 : _a.status) === "00" ? "success" : "failed";
                         if (transferRes.data) {
+                            // Create ledger entries if feature enabled
+                            if (config_2.FEATURE_LEDGER) {
+                                yield ledger_service_1.LedgerService.createDoubleEntry(traceId, `user_wallet:${loan.userId}`, 'platform_revenue', money_1.Money.toKobo(deductionAmount), 'loan', {
+                                    userId: loan.userId,
+                                    subtype: 'auto_repayment',
+                                    meta: { loanId: loan._id, automatic: true }
+                                });
+                            }
+                            const repaymentEntry = {
+                                amount: deductionAmount,
+                                outstanding: remainingOutstanding,
+                                action: "repayment",
+                                date: new Date().toISOString()
+                            };
                             yield updateLoan(loan._id, {
                                 loan_payment_status: remainingOutstanding <= 0 ? "complete" : "in-progress",
                                 outstanding: remainingOutstanding,
-                                repayment_history: [
-                                    ...(loan.repayment_history || []),
-                                    { amount: deductionAmount, outstanding: remainingOutstanding, action: "repayment", date: new Date().toISOString() }
-                                ]
+                                traceId
                             });
+                            yield addRepaymentHistory(loan._id, repaymentEntry);
                             yield update(user._id, "user_metadata.wallet", String(userBalance - deductionAmount));
-                            yield createTransaction({
+                            yield createWithTrace({
                                 name: "Loan Repayment",
                                 category: "debit",
                                 type: "loan",
@@ -139,8 +125,8 @@ function checkLoansAndSendEmails() {
                                 session_id: ref,
                                 status: transactionStatus,
                                 message: ((_b = transferRes.data) === null || _b === void 0 ? void 0 : _b.status) || "Unknown",
+                                traceId
                             });
-                            console.log(`Loan ${loan._id}: Repayment of ${deductionAmount} successful.`);
                         }
                     }
                 }
@@ -154,7 +140,7 @@ function checkLoansAndSendEmails() {
         }
     });
 }
-function addOnePercentToOverdueLoan(loan) {
+function addOnePercentToOverdueLoan(loan, traceId) {
     return __awaiter(this, void 0, void 0, function* () {
         const session = yield mongoose_1.default.startSession();
         try {
@@ -162,23 +148,34 @@ function addOnePercentToOverdueLoan(loan) {
                 const today = new Date().toISOString().split("T")[0]; // Get YYYY-MM-DD format
                 const lastInterestDate = loan.lastInterestAdded ? loan.lastInterestAdded.split("T")[0] : null;
                 if (lastInterestDate === today) {
-                    console.log(`Loan ${loan._id}: Interest already added today.`);
                     return;
                 }
                 const overdueFee = Number(loan.amount) * 0.01;
                 const newOutstanding = Number(loan.outstanding) + overdueFee;
+                // Create ledger entries for penalty if feature enabled
+                if (config_2.FEATURE_LEDGER) {
+                    yield ledger_service_1.LedgerService.createDoubleEntry(traceId, `user_wallet:${loan.userId}`, 'platform_revenue', money_1.Money.toKobo(overdueFee), 'loan', {
+                        userId: loan.userId,
+                        subtype: 'penalty',
+                        session,
+                        meta: { loanId: loan._id, penaltyRate: 0.01 }
+                    });
+                }
+                const penaltyEntry = {
+                    amount: overdueFee,
+                    outstanding: newOutstanding,
+                    action: "overdue_fee",
+                    date: new Date().toISOString()
+                };
                 yield updateLoan(loan._id, {
                     outstanding: newOutstanding,
                     lastInterestAdded: today, // Update last interest added date
-                    repayment_history: [
-                        ...(loan.repayment_history || []),
-                        { amount: overdueFee, outstanding: newOutstanding, action: "overdue_fee", date: new Date().toISOString() }
-                    ]
+                    traceId
                 });
+                yield addRepaymentHistory(loan._id, penaltyEntry);
                 const user = yield find({ _id: loan.userId }, "one");
                 if (user && !Array.isArray(user))
                     yield sendEmail(user.email, 'Your Loan is Overdue', `Dear ${user.user_metadata.first_name}, Your loan payment of ${loan.outstanding} was due on ${loan.repayment_date}. Please make the payment immediately to avoid any futher late fees and penalties.`);
-                console.log(`Loan ${loan._id}: 1% overdue fee added successfully.`);
             }));
         }
         catch (error) {
@@ -193,41 +190,32 @@ const sendMessageForLoan = () => __awaiter(void 0, void 0, void 0, function* () 
     const today = new Date();
     const tomorrow = new Date();
     tomorrow.setDate(today.getDate() + 1);
-    const formatDate = (date) => {
-        // Format the date as "DD MMM YYYY"
-        const options = {
-            day: '2-digit',
-            month: 'short',
-            year: 'numeric',
-        };
-        return date.toLocaleDateString('en-US', options);
-    };
-    const todayStr = formatDate(today);
-    const tomorrowStr = formatDate(tomorrow);
     const dueLoans = yield findLoan({
-        repayment_date: todayStr,
-        outstanding: { $gt: 0 }, // Condition for outstanding > 0
+        repayment_date: new Date().toISOString(),
+        outstanding: { $gt: 0 },
         status: "accepted"
     }, "many");
-    if (dueLoans && Array.isArray(dueLoans) && dueLoans.length > 0) {
-        console.log("In Upcoming Loans");
+    console.log({ dueLoans });
+    if (Array.isArray(dueLoans) && dueLoans.length > 0) {
         for (const loan of dueLoans) {
             const user = yield find({ _id: loan.userId }, "one");
-            if (user && !Array.isArray(user))
-                yield sendEmail(user.email, 'Your Loan is Due Today', `Dear ${user.user_metadata.first_name}, Your loan payment of ${loan.outstanding} is due Today. Please make the payment immediately to avoid any futher late fees and penalties.`);
+            if (user && !Array.isArray(user)) {
+                yield sendEmail(user.email, 'Your Loan is Due Today', `Dear ${user.user_metadata.first_name}, Your loan payment of ${loan.outstanding} is due Today. Please make the payment immediately to avoid any further late fees and penalties.`);
+            }
         }
     }
     const upcomingLoans = yield findLoan({
-        repayment_date: tomorrowStr,
-        outstanding: { $gt: 0 }, // Condition for outstanding > 0
+        repayment_date: tomorrow.toISOString(),
+        outstanding: { $gt: 0 },
         status: "accepted"
     }, "many");
-    if (upcomingLoans && Array.isArray(upcomingLoans) && upcomingLoans.length > 0) {
-        console.log("In Upcoming Loans");
+    console.log({ upcomingLoans });
+    if (Array.isArray(upcomingLoans) && upcomingLoans.length > 0) {
         for (const loan of upcomingLoans) {
             const user = yield find({ _id: loan.userId }, "one");
-            if (user && !Array.isArray(user))
-                yield sendEmail(user.email, 'Your Loan will be Due Tomorrow', `Dear ${user.user_metadata.first_name}, Your loan payment of ${loan.outstanding} will be due tomorrow. Please make the payment immediately to avoid any futher late fees and penalties.`);
+            if (user && !Array.isArray(user)) {
+                yield sendEmail(user.email, 'Your Loan will be Due Tomorrow', `Dear ${user.user_metadata.first_name}, Your loan payment of ${loan.outstanding} will be due tomorrow. Please make the payment immediately to avoid any further late fees and penalties.`);
+            }
         }
     }
 });
@@ -236,12 +224,12 @@ function sendEmail(to, subject, text) {
     return __awaiter(this, void 0, void 0, function* () {
         try {
             const info = yield transporter.sendMail({
-                from: "primefinance@primefinance.live", // Must match Mailgun's verified domain
+                from: "info@primefinance.live", // Must match Mailgun's verified domain
                 to,
                 subject,
                 text,
             });
-            console.log(`✅ Email sent to ${to}: ${subject}`, info.messageId);
+            console.log(`✅ Email sent to ${to}: ${subject}`);
         }
         catch (error) {
             console.error(`❌ Email sending failed:`, error.message);

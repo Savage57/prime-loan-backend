@@ -29,6 +29,34 @@ class LoanService {
         });
     }
     ;
+    addRepaymentHistory(uid, entry) {
+        return __awaiter(this, void 0, void 0, function* () {
+            yield model_1.LoanModel.findByIdAndUpdate(uid, {
+                $push: { repayment_history: entry }
+            });
+        });
+    }
+    ;
+    getOverdueLoans() {
+        return __awaiter(this, void 0, void 0, function* () {
+            return yield model_1.LoanModel.find({
+                outstanding: { $gt: 0 },
+                status: "accepted",
+                repayment_date: { $lt: new Date().toISOString() }
+            });
+        });
+    }
+    ;
+    getActiveLoansForUser(userId) {
+        return __awaiter(this, void 0, void 0, function* () {
+            return yield model_1.LoanModel.find({
+                userId,
+                status: { $in: ["pending", "accepted"] },
+                outstanding: { $gt: 0 }
+            });
+        });
+    }
+    ;
     fetchAll(limitValue, offsetValue) {
         return __awaiter(this, void 0, void 0, function* () {
             const loans = yield model_1.LoanModel.find().limit(limitValue).skip(offsetValue);

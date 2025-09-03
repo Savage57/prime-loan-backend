@@ -20,28 +20,97 @@ const js_sha512_1 = require("js-sha512");
 const services_1 = require("../services");
 const exceptions_1 = require("../exceptions");
 const axios_1 = __importDefault(require("axios"));
+const loanReminder_1 = require("../jobs/loanReminder");
 const { find, findByEmail, create, update } = new services_1.UserService();
 const { create: createTransaction } = new services_1.TransactionService();
 const { update: updateLoan, findById: findLoanById, find: findLoan, create: createLoan } = new services_1.LoanService();
+function convertToCreditScore(rawData) {
+    var _a, _b, _c, _d, _e;
+    if (rawData.error)
+        return null;
+    const profile = (rawData === null || rawData === void 0 ? void 0 : rawData.profile) || {};
+    const creditHistories = (rawData === null || rawData === void 0 ? void 0 : rawData.credit_history) || [];
+    const firstCredit = ((_a = creditHistories[0]) === null || _a === void 0 ? void 0 : _a.history[0]) || {};
+    console.log({ profile, creditHistories, firstCredit });
+    const loan_details = creditHistories.flatMap((ch) => {
+        console.log({ ch });
+        return ch.history.map((h) => {
+            var _a, _b, _c, _d;
+            const repaymentAmount = isNaN(Number(h.repayment_amount)) ? 0 : Number(h.repayment_amount);
+            console.log({ h });
+            return {
+                loanProvider: ch.institution || "Unknown",
+                accountNumber: "N/A",
+                loanAmount: repaymentAmount,
+                outstandingBalance: 0,
+                status: h.loan_status || "",
+                performanceStatus: h.performance_status || "",
+                overdueAmount: 0,
+                type: "N/A",
+                loanDuration: `${h.tenor || 0} months`,
+                repaymentFrequency: h.repayment_frequency || "",
+                repaymentBehavior: ((_b = (_a = h.repayment_schedule) === null || _a === void 0 ? void 0 : _a[0]) === null || _b === void 0 ? void 0 : _b.status) || "",
+                paymentProfile: ((_d = (_c = h.repayment_schedule) === null || _c === void 0 ? void 0 : _c[0]) === null || _d === void 0 ? void 0 : _d.status) || "",
+                dateAccountOpened: formatDate(h.date_opened),
+                lastUpdatedAt: formatDate(h.closed_date),
+                loanCount: ch.history.length,
+                monthlyInstallmentAmt: repaymentAmount
+            };
+        });
+    });
+    const creditors = creditHistories.map((ch) => ({
+        Subscriber_ID: ch.institution,
+        Name: ch.institution,
+        Phone: "",
+        Address: ""
+    }));
+    const totalDebt = loan_details.reduce((sum, loan) => sum + loan.loanAmount, 0);
+    return {
+        loanId: "N/A",
+        lastReported: rawData.timestamp || new Date().toISOString(),
+        creditorName: ((_b = creditHistories[0]) === null || _b === void 0 ? void 0 : _b.institution) || "Unknown",
+        totalDebt: totalDebt.toString(),
+        accountype: "N/A",
+        outstandingBalance: 0,
+        activeLoan: loan_details.filter(loan => loan.status === "open").length,
+        loansTaken: loan_details.length,
+        income: 0,
+        repaymentHistory: ((_c = loan_details[0]) === null || _c === void 0 ? void 0 : _c.repaymentBehavior) || "",
+        openedDate: ((_d = loan_details[0]) === null || _d === void 0 ? void 0 : _d.dateAccountOpened) || "",
+        lengthOfCreditHistory: "0 years",
+        remarks: ((_e = loan_details[0]) === null || _e === void 0 ? void 0 : _e.performanceStatus) ? `Loan is ${loan_details[0].performanceStatus}` : "",
+        creditors,
+        loan_details
+    };
+}
+// Helper: Convert DD-MM-YYYY to ISO format
+function formatDate(dateStr) {
+    if (dateStr) {
+        const [day, month, year] = (dateStr === null || dateStr === void 0 ? void 0 : dateStr.split("-")) || [];
+        if (!day || !month || !year)
+            return "";
+        return new Date(`${year}-${month}-${day}`).toISOString();
+    }
+    return new Date().toISOString();
+}
 const httpRequest = (bvn) => __awaiter(void 0, void 0, void 0, function* () {
-    const url = `https://api.creditchek.africa/v1/credit/creditRegistry-premium?bvn=${bvn}`;
-    const accessToken = `M9/lR4xLUzwA+k4lnVWL40j98i96FtJmmPAfAQBktaL2BfhpEHqWIrmqORGzodK1`;
+    const url = `https://api.withmono.com/v3/lookup/credit-history/all`;
     const headers = {
-        "Content-Type": "application/json",
-        "token": accessToken,
+        "accept": "application/json",
+        "content-type": "application/json",
+        "mono-sec-key": "live_sk_axio44pdonk6lb6rdhxa",
     };
     const options = {
         url,
-        method: "GET",
-        headers
+        method: "POST",
+        headers,
+        data: { bvn }
     };
     try {
         const response = yield (0, axios_1.default)(options);
-        console.log({ response });
         if (![200, 202].includes(response.status)) {
             throw new Error(`Client creation failed: ${response.data.message}`);
         }
-        console.log({ httpClient: "passed" });
         return response.data.data;
     }
     catch (error) {
@@ -50,7 +119,7 @@ const httpRequest = (bvn) => __awaiter(void 0, void 0, void 0, function* () {
             return ({ error: "Unable to create loan cause credit check can't be performed at this time" });
         }
         else {
-            return ({ error });
+            return ({ error: error.response.data });
         }
     }
 });
@@ -67,8 +136,9 @@ const createAndDisburseLoan = (req, res, next) => __awaiter(void 0, void 0, void
             });
         }
         const user = yield find({ _id: userId }, "one");
-        if (!user)
+        if (!user || Array.isArray(user) || !user._id) {
             throw new exceptions_1.NotFoundError(`Invalid user ID provided`);
+        }
         const foundLoan = yield findLoanById(transactionId);
         if (!foundLoan) {
             return res.status(404).json({
@@ -83,9 +153,9 @@ const createAndDisburseLoan = (req, res, next) => __awaiter(void 0, void 0, void
             });
         }
         const account = yield (0, httpClient_1.httpClient)(`/wallet2/account/enquiry?`, "GET");
-        console.log({ account });
+        // console.log({ account })
         const useraccount = yield (0, httpClient_1.httpClient)(`/wallet2/account/enquiry?accountNumber=${user === null || user === void 0 ? void 0 : user.user_metadata.accountNo}`, "GET");
-        console.log({ useraccount });
+        // console.log({ useraccount })
         if (account.data && useraccount.data) {
             const { accountNo, accountBalance, accountId, client, clientId, savingsProductName } = account.data.data;
             const { accountNo: uan, accountBalance: uab, accountId: uai, bn, client: uc, clientId: uci, savingsProductName: uspn } = useraccount.data.data;
@@ -120,7 +190,11 @@ const createAndDisburseLoan = (req, res, next) => __awaiter(void 0, void 0, void
                     ? ((amount * loan_per) / 100) * (duration / 30)
                     : (amount * loan_per) / 100;
                 const total = Number(Number(amount) + Number(fee + percentage));
-                const loan = yield updateLoan(transactionId, Object.assign(Object.assign(Object.assign({}, (duration ? { duration } : {})), (amount ? { amount } : {})), { outstanding: total, status: "accepted" }));
+                const loanDate = new Date();
+                const repaymentDate = new Date(loanDate);
+                repaymentDate.setDate(loanDate.getDate() + Number(duration));
+                const loan = yield updateLoan(transactionId, Object.assign(Object.assign(Object.assign({}, (duration ? { duration } : {})), (amount ? { amount } : {})), { outstanding: total, status: "accepted", loan_date: loanDate.toISOString(), repayment_date: repaymentDate.toISOString() }));
+                yield (0, loanReminder_1.sendEmail)(user.email, "Loan Application Approved", `Congratulations on your successful loan! 🎉 Repay on time and unlock access to higher limits—up to ₦200,000 on your next request.\n\nPrime Finance`);
                 res.status(response.status).json({ status: "success", data: response.data.data });
             }
             return res.status(400).json({ status: "failed", message: 'Unable to approve loan' });
@@ -134,17 +208,21 @@ const createAndDisburseLoan = (req, res, next) => __awaiter(void 0, void 0, void
 });
 exports.createAndDisburseLoan = createAndDisburseLoan;
 const createClientLoan = (req, res, next) => __awaiter(void 0, void 0, void 0, function* () {
+    var _a;
     try {
-        const { first_name, last_name, dob, nin, email, bvn, phone, address, company, company_address, annual_income, guarantor_1_name, guarantor_1_phone, guarantor_2_name, guarantor_2_phone, amount, reason, base64Image, outstanding, category, type, status, duration, repayment_amount, percentage, loan_date, repayment_date, acknowledgment } = req.body;
+        const { first_name, last_name, dob, nin, email, bvn, phone, address, company, company_address, annual_income, guarantor_1_name, guarantor_1_phone, guarantor_2_name, guarantor_2_phone, amount, reason, base64Image, outstanding, category, type, status, duration, repayment_amount, percentage, loan_date, repayment_date, acknowledgment, debit_account } = req.body;
         const { user } = req;
         if (!user || !user._id) {
             throw new exceptions_1.NotFoundError("User not found.");
         }
-        // const credit = await httpRequest(bvn);
-        // console.log({ credit });
-        // if(credit.error) {
-        //   throw new BadRequestError(credit.error);
-        // }
+        const loans_get = yield findLoan({
+            userId: user._id,
+            status: { $in: ["pending", "active"] }
+        }, "many");
+        if (loans_get && Array.isArray(loans_get) && loans_get.length > 0) {
+            throw new exceptions_1.ConflictError("Duplicate loan attempt. Wait for the current loan decision, or repay the existing one.");
+        }
+        const credit = yield httpRequest(bvn);
         const loan = yield createLoan({
             first_name,
             last_name,
@@ -176,26 +254,14 @@ const createClientLoan = (req, res, next) => __awaiter(void 0, void 0, void 0, f
             repayment_date,
             acknowledgment,
             loan_payment_status: "not-started",
-            // credit_score: {
-            //   loanId: credit._id,
-            //   lastReported: "",
-            //   creditorName: credit.name,
-            //   totalDebt: credit.score.totalBorrowed,
-            //   accountype: "",
-            //   outstandingBalance: credit.score.totalOutstanding,
-            //   activeLoan: credit.score.totalNoOfActiveLoans,
-            //   loansTaken: credit.score.totalNoOfLoans,
-            //   income: 0,
-            //   repaymentHistory: credit.score.totalNoOfPerformingLoans,
-            //   openedDate: credit.score.totalNoOfActiveLoans,
-            //   lengthOfCreditHistory: credit.score.totalNoOfLoans,
-            //   remarks: "",
-            //   creditors: credit.score.creditors,
-            //   loan_details: credit.score.loanPerformance,
-            // }
+            credit_message: ((_a = credit === null || credit === void 0 ? void 0 : credit.error) === null || _a === void 0 ? void 0 : _a.message) || "available",
+            credit_score: convertToCreditScore(credit),
+            debit_account: debit_account || "N/A"
         });
         if (!loan)
             throw new exceptions_1.NotFoundError("Loan not created");
+        yield (0, loanReminder_1.sendEmail)(user.email, "Loan Application Received", `Dear ${user.user_metadata.first_name},\n\nYour loan application has been received. We will review it and get back to you shortly.\n\nThank you,\nPrime Finance`);
+        yield (0, loanReminder_1.sendEmail)("primefinancials68@gmail.com, info@primefinance.live", "New Loan Created From User: " + user.user_metadata.first_name, `A new loan has been created by ${user.user_metadata.first_name} ${user.user_metadata.surname}.\n\nDetails:\n- Amount: ${amount}\n- Category: ${category}\n- Type: ${type}\n- Status: ${status}\n- Duration: ${duration} days\n\nPlease review the application at your earliest convenience.`);
         res.status(200).json({ status: "success", data: loan });
     }
     catch (error) {
@@ -338,9 +404,9 @@ const repayLoan = (req, res, next) => __awaiter(void 0, void 0, void 0, function
 exports.repayLoan = repayLoan;
 const rejectLoan = (req, res, next) => __awaiter(void 0, void 0, void 0, function* () {
     try {
-        const { transactionId } = req.body;
+        const { transactionId, reason } = req.body;
         // Validate required parameters
-        (0, validateParams_1.validateRequiredParams)({ transactionId }, ["transactionId"]);
+        (0, validateParams_1.validateRequiredParams)({ transactionId, reason }, ["transactionId", "reason"]);
         const foundLoan = yield findLoanById(transactionId);
         if (!foundLoan) {
             return res.status(404).json({
@@ -362,6 +428,7 @@ const rejectLoan = (req, res, next) => __awaiter(void 0, void 0, void 0, functio
         }
         const loan = yield updateLoan(transactionId, {
             outstanding: 0,
+            rejectionReason: reason,
             status: "rejected"
         });
         res.status(200).json({ status: "success", data: loan });

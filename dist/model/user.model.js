@@ -11,31 +11,28 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
 Object.defineProperty(exports, "__esModule", { value: true });
 const mongoose_1 = require("mongoose");
 const updateSchema = new mongoose_1.Schema({
-    pin: { type: Number, required: true }, // Optional
+    pin: { type: Number, required: true },
     type: { type: String, enum: ["pin", "password"], required: true },
     status: { type: String, enum: ["validated", "invalid", "awaiting_validation"], required: true },
     created_at: { type: String, required: true },
 });
+// Define the schema for linked accounts
+const linkedAccountSchema = new mongoose_1.Schema({
+    id: { type: String, required: true },
+    name: { type: String, required: true },
+    email: { type: String, required: true },
+    ref: { type: String, required: true },
+    bank: { type: String, required: true },
+    account_number: { type: String, required: true },
+}, { _id: false } // Prevent Mongoose from adding an extra _id field to each subdocument
+);
 const userSchema = new mongoose_1.Schema({
     confirmation_sent_at: { type: String, required: false },
     confirmed_at: { type: String, required: false },
     email: {
         type: String,
         required: true,
-        unique: true,
-        validate: {
-            validator: function (email) {
-                return __awaiter(this, void 0, void 0, function* () {
-                    const self = this;
-                    // Regex to validate email format
-                    if (!/^\w+([\.-]?\w+)*@\w+([\.-]?\w+)*(\.\w{2,3})+$/.test(email)) {
-                        throw new Error("Invalid email address");
-                    }
-                    return true; // Validation passed
-                });
-            },
-            message: (props) => props.reason.message || "Invalid email",
-        },
+        unique: true
     },
     password: { type: String, required: true },
     email_confirmed_at: { type: String, required: false },
@@ -57,7 +54,10 @@ const userSchema = new mongoose_1.Schema({
         first_name: { type: String, required: false },
         dateOfBirth: { type: String, required: false },
         email_verified: { type: Boolean, required: false },
+        signupBonusReceived: { type: Boolean, required: false },
         phone_verified: { type: Boolean, required: false },
+        ladderIndex: { type: Number, required: false, default: 0 },
+        creditScore: { type: Number, required: false, default: 500 },
         accountNo: { type: String, required: false },
         address: { type: String, required: false },
         pin: { type: String, required: false },
@@ -70,11 +70,11 @@ const userSchema = new mongoose_1.Schema({
             required: false,
         },
     },
+    linked_accounts: { type: [linkedAccountSchema], default: [] }, // <-- added here
     updates: { type: [updateSchema], default: [] },
     is_super_admin: { type: Boolean, required: false, default: null },
 }, { timestamps: true });
 const User = (0, mongoose_1.model)('users', userSchema);
-// Sync indexes with the database
 (() => __awaiter(void 0, void 0, void 0, function* () {
     yield User.syncIndexes();
 }))();

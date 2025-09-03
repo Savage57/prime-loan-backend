@@ -30,6 +30,15 @@ class UserService {
         });
     }
     ;
+    updateLinkedAccounts(uid, linkedAccounts) {
+        return __awaiter(this, void 0, void 0, function* () {
+            const user = yield model_1.UserModel.findById(uid);
+            if (!user)
+                throw new exceptions_1.NotFoundError(`No user found with the id ${uid}`);
+            return yield model_1.UserModel.findByIdAndUpdate(uid, { $set: { linked_accounts: linkedAccounts } }, { new: true });
+        });
+    }
+    ;
     fetchAll(limitValue, offsetValue) {
         return __awaiter(this, void 0, void 0, function* () {
             const users = yield model_1.UserModel.find().limit(limitValue).skip(offsetValue);
@@ -99,6 +108,24 @@ class UserService {
     deleteUser(uid) {
         return __awaiter(this, void 0, void 0, function* () {
             yield model_1.UserModel.deleteOne({ _id: uid, });
+        });
+    }
+    ;
+    getWalletBalance(uid) {
+        return __awaiter(this, void 0, void 0, function* () {
+            var _a;
+            const user = yield model_1.UserModel.findById(uid);
+            if (!user)
+                return 0;
+            return Number(((_a = user.user_metadata) === null || _a === void 0 ? void 0 : _a.wallet) || 0);
+        });
+    }
+    ;
+    updateWalletBalance(uid, newBalance) {
+        return __awaiter(this, void 0, void 0, function* () {
+            yield model_1.UserModel.findByIdAndUpdate(uid, {
+                $set: { 'user_metadata.wallet': String(newBalance) }
+            });
         });
     }
     ;
