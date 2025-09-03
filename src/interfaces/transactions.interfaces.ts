@@ -21,6 +21,7 @@ export interface Transaction {
   receiver: string; // Receiver information
   bank: string; // Bank details
   account_number: string; // Account number
+  traceId?: string; // V2 addition for correlation
 }
 
 export interface CREATETRANSACTION {
@@ -39,6 +40,7 @@ export interface CREATETRANSACTION {
     receiver: string; // Receiver information
     bank: string; // Bank details
     account_number: string; // Account number
+    traceId?: string; // V2 addition for correlation
 }
 
 export interface UPDATETRANSACTION {

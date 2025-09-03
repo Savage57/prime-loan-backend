@@ -3,17 +3,9 @@
  * Stores responses for idempotent endpoints to return cached results
  */
 import mongoose, { Document, Schema } from 'mongoose';
+import { IdempotencyKey } from '../interfaces';
 
-export interface IIdempotencyKey extends Document {
-  _id: string;
-  key: string;
-  userId?: string;
-  response: any;
-  createdAt: Date;
-  expiresAt?: Date;
-}
-
-const IdempotencyKeySchema = new Schema<IIdempotencyKey>({
+const IdempotencyKeySchema = new Schema<IdempotencyKey>({
   key: { type: String, required: true, unique: true },
   userId: { type: String, index: true },
   response: { type: Schema.Types.Mixed, required: true },
@@ -23,4 +15,4 @@ const IdempotencyKeySchema = new Schema<IIdempotencyKey>({
   collection: 'idempotency_keys'
 });
 
-export const IdempotencyKey = mongoose.model<IIdempotencyKey>('IdempotencyKey', IdempotencyKeySchema);
+export default mongoose.model<IdempotencyKey & Document>('IdempotencyKey', IdempotencyKeySchema);

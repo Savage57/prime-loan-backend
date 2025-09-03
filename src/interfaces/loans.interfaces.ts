@@ -3,6 +3,13 @@ export type LOANTYPE = "request" | "repay";
 export type LOANSTATUS = "pending" | "rejected" | "accepted";
 export type LOANPAYMENTSTATUS = "complete" | "in-progress" | "not-started";
 
+export interface RepaymentHistoryEntry {
+  amount: number;
+  outstanding: number;
+  date: string;
+  action: string;
+}
+
 export interface Subscriber {
   Subscriber_ID: string;
   Name: string;
@@ -87,12 +94,7 @@ export interface LoanApplication {
   loan_payment_status: LOANPAYMENTSTATUS;
   credit_message: string;
   credit_score: ICreditScore | null;
-  repayment_history: {
-    amount: number;
-    outstanding: number;
-    date: string;
-    action: string;
-  }[];
+  repayment_history: RepaymentHistoryEntry[];
   lastInterestAdded: string;
   rejectionReason?: string;
   debit_account: string;
@@ -147,12 +149,7 @@ export interface UPDATELOAN {
   status?: LOANSTATUS; // Loan status
   lastInterestAdded?: string;
   rejectionReason?: string;
-  repayment_history?: {
-    amount: number;
-    outstanding: number;
-    date: string;
-    action: string;
-  }[]
+  repayment_history?: RepaymentHistoryEntry[];
 }
 
 

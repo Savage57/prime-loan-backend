@@ -22,7 +22,7 @@ import {
 import { ProtectedRequest, User } from "../interfaces";
 import { sendEmail } from "../jobs/loanReminder";
 import { generateRandomString } from "../utils/generateRef";
-import CounterService from "../services/counter.service";
+import { CounterService } from "../services";
 
 function isUser(object: any, value: string): object is User {
   return value in object;
@@ -30,7 +30,6 @@ function isUser(object: any, value: string): object is User {
 
 const { find, findByEmail, create, update } = new UserService();
 const { create: createTransaction } = new TransactionService();
-const counterService = new CounterService();
 
 const signupBonus = async ({
   userId,
@@ -1058,7 +1057,8 @@ export const linkAccount =  async (req: ProtectedRequest, res: Response, next: N
       throw new UnauthorizedError("Unauthorized! Please log in as a user to continue");
     }
 
-    const updatedUser = await update(user._id, "linked_accounts", [...(user?.linked_accounts || []), ...req.body]);
+    const newLinkedAccounts = [...(user?.linked_accounts || []), req.body];
+    const updatedUser = await update(user._id, "linked_accounts", newLinkedAccounts);
 
     console.log({ updatedUser });
 
@@ -1103,8 +1103,7 @@ export const unlinkAccount =  async (req: ProtectedRequest, res: Response, next:
       throw new UnauthorizedError("Unauthorized! Please log in as a user to continue");
     }
 
-    const linked_accounts = (user?.linked_accounts || []).map((la) => la.id !== req.params.id)
-
+    const linked_accounts = (user?.linked_accounts || []).filter((la) => la.id !== req.params.id);
     const updatedUser = await update(user._id, "linked_accounts", linked_accounts);
 
     console.log({ updatedUser });

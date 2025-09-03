@@ -3,7 +3,7 @@
  * Ensures every request has a unique identifier for logging and debugging
  */
 import { Request, Response, NextFunction } from 'express';
-import { UuidService } from '../../shared/utils/uuid';
+import { UuidService } from '../utils/uuid';
 
 declare global {
   namespace Express {

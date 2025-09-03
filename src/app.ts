@@ -11,8 +11,9 @@ import compression from "compression";
 import cookieParser from "cookie-parser";
 import { crossOrigin } from "./utils";
 
-// Import V2 routes
-import v2Routes from "./app/routes.v2";
+// Import enhanced routes
+import enhancedRoutes from "./routes/enhancedRoutes";
+import adminRoutes from "./routes/adminRoutes";
 
 export default async (app: Application) => {
     // Log to console using morgan if app is in development
@@ -35,8 +36,9 @@ export default async (app: Application) => {
     app.use("/api/loans", loanRoutes);
     app.use("/api/data", dataRoutes);
   
-    // Mount V2 routes
-    app.use("/v2", v2Routes);
+    // Mount enhanced routes
+    app.use("/api/enhanced", enhancedRoutes);
+    app.use("/api/admin", adminRoutes);
   
     app.use(errHandler);
 }

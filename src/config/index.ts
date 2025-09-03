@@ -45,6 +45,16 @@ export const CLUB_KONNECT_API_USER_ID = process.env.CLUB_KONNECT_API_USER_ID;
 export const CLUB_KONNECT_API_URL = process.env.CLUB_KONNECT_API_URL;
 export const APIAUTH = `?UserID=${CLUB_KONNECT_API_USER_ID}&APIKey=${CLUB_KONNECT_API_KEY}`;
 
+// V2 Configuration
+export const FEATURE_LEDGER = process.env.FEATURE_LEDGER === 'true';
+export const FEATURE_AUTO_APPROVAL = process.env.FEATURE_AUTO_APPROVAL === 'true';
+export const FEATURE_OCR = process.env.FEATURE_OCR === 'true';
+export const POLL_INTERVAL_MS = parseInt(process.env.POLL_INTERVAL_MS || '30000');
+export const POLL_BATCH_SIZE = parseInt(process.env.POLL_BATCH_SIZE || '100');
+export const REFUND_TIMEOUT_MS = parseInt(process.env.REFUND_TIMEOUT_MS || '86400000');
+export const LOAN_AUTO_APPROVAL_MAX_KOBO = parseInt(process.env.LOAN_AUTO_APPROVAL_MAX_KOBO || '5000000');
+export const LOAN_PENALTY_PCT_PER_DAY = parseFloat(process.env.LOAN_PENALTY_PCT_PER_DAY || '1');
+
 export const CLUB_KONNECT_API_URLs = {
   check_wallet_balance: () => `${CLUB_KONNECT_API_URL}/APIWalletBalanceV1.asp${APIAUTH}`,
 

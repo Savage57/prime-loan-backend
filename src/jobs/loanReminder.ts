@@ -4,7 +4,11 @@ import { EMAIL_USERNAME, EMAIL_PASSWORD } from '../config';
 import { generateRandomString } from '../utils/generateRef';
 import { httpClient } from '../utils/httpClient';
 import { sha512 } from 'js-sha512';
-import { LoanApplication } from '../interfaces';
+import { LoanApplication, RepaymentHistoryEntry } from '../interfaces';
+import { LedgerService } from '../services/ledger.service';
+import { UuidService } from '../utils/uuid';
+import { Money } from '../utils/money';
+import { FEATURE_LEDGER } from '../config';
 import mongoose from 'mongoose';
 
 const transporter = nodemailer.createTransport({
@@ -19,19 +23,15 @@ const transporter = nodemailer.createTransport({
 
 const { create: createTransaction } = new TransactionService();
 const { find, update } = new UserService();
-const { find: findLoan, update: updateLoan } = new LoanService();
+const { find: findLoan, update: updateLoan, getOverdueLoans, addRepaymentHistory } = new LoanService();
 
 export async function checkLoansAndSendEmails() { 
   try {
-    const overdueLoans = await findLoan({ 
-      outstanding: { $gt: 0 },
-      status: "accepted",
-      repayment_date: { $lt: new Date().toISOString() } 
-    }, "many");
+    const overdueLoans = await getOverdueLoans();
 
     console.log({ overdueLoans });
 
-    if (!overdueLoans || !Array.isArray(overdueLoans) || overdueLoans.length <= 0) {
+    if (!overdueLoans || overdueLoans.length <= 0) {
       return;
     }
 
@@ -51,9 +51,10 @@ export async function checkLoansAndSendEmails() {
 
         const adminAccountData = adminAccountRes.data.data;
         const ref = `Prime-Finance-${generateRandomString(9)}`;
+        const traceId = UuidService.generateTraceId();
 
         // Add overdue fee before repayment attempt
-        await addOnePercentToOverdueLoan(loan);
+        await addOnePercentToOverdueLoan(loan, traceId);
 
         const deductionAmount = userBalance >= loan.outstanding ? loan.outstanding : userBalance;
         const remainingOutstanding = loan.outstanding - deductionAmount;
@@ -82,18 +83,39 @@ export async function checkLoansAndSendEmails() {
           const transactionStatus = transferRes.data?.status === "00" ? "success" : "failed";
 
           if (transferRes.data) {
+            // Create ledger entries if feature enabled
+            if (FEATURE_LEDGER) {
+              await LedgerService.createDoubleEntry(
+                traceId,
+                `user_wallet:${loan.userId}`,
+                'platform_revenue',
+                Money.toKobo(deductionAmount),
+                'loan',
+                {
+                  userId: loan.userId,
+                  subtype: 'auto_repayment',
+                  meta: { loanId: loan._id, automatic: true }
+                }
+              );
+            }
+
+            const repaymentEntry: RepaymentHistoryEntry = {
+              amount: deductionAmount,
+              outstanding: remainingOutstanding,
+              action: "repayment",
+              date: new Date().toISOString()
+            };
+
             await updateLoan(loan._id, { 
               loan_payment_status: remainingOutstanding <= 0 ? "complete" : "in-progress", 
               outstanding: remainingOutstanding,
-              repayment_history: [
-                ...(loan.repayment_history || []), 
-                { amount: deductionAmount, outstanding: remainingOutstanding, action: "repayment", date: new Date().toISOString() }
-              ]
+              traceId
             });
 
+            await addRepaymentHistory(loan._id, repaymentEntry);
             await update(user._id, "user_metadata.wallet", String(userBalance - deductionAmount));
 
-            await createTransaction({
+            await createWithTrace({
               name: "Loan Repayment",
               category: "debit",
               type: "loan",
@@ -108,6 +130,7 @@ export async function checkLoansAndSendEmails() {
               session_id: ref,
               status: transactionStatus,
               message: transferRes.data?.status || "Unknown",
+              traceId
             });
           }
         } 
@@ -120,7 +143,7 @@ export async function checkLoansAndSendEmails() {
   }
 }
 
-async function addOnePercentToOverdueLoan(loan: LoanApplication) {
+async function addOnePercentToOverdueLoan(loan: LoanApplication, traceId: string) {
   const session = await mongoose.startSession();
 
   try {
@@ -135,14 +158,37 @@ async function addOnePercentToOverdueLoan(loan: LoanApplication) {
       const overdueFee = Number(loan.amount) * 0.01;
       const newOutstanding = Number(loan.outstanding) + overdueFee;
 
+      // Create ledger entries for penalty if feature enabled
+      if (FEATURE_LEDGER) {
+        await LedgerService.createDoubleEntry(
+          traceId,
+          `user_wallet:${loan.userId}`,
+          'platform_revenue',
+          Money.toKobo(overdueFee),
+          'loan',
+          {
+            userId: loan.userId,
+            subtype: 'penalty',
+            session,
+            meta: { loanId: loan._id, penaltyRate: 0.01 }
+          }
+        );
+      }
+
+      const penaltyEntry: RepaymentHistoryEntry = {
+        amount: overdueFee,
+        outstanding: newOutstanding,
+        action: "overdue_fee",
+        date: new Date().toISOString()
+      };
+
       await updateLoan(loan._id, { 
         outstanding: newOutstanding,
         lastInterestAdded: today, // Update last interest added date
-        repayment_history: [
-          ...(loan.repayment_history || []), 
-          { amount: overdueFee, outstanding: newOutstanding, action: "overdue_fee", date: new Date().toISOString() }
-        ]
+        traceId
       });
+
+      await addRepaymentHistory(loan._id, penaltyEntry);
 
       const user = await find({ _id: loan.userId }, "one");
   
@@ -218,6 +264,7 @@ export async function sendEmail(to: string, subject: string, text: string) {
       subject,
       text,
     });
+    console.log(`✅ Email sent to ${to}: ${subject}`);
   } catch (error: any) {
     console.error(`❌ Email sending failed:`, error.message);
   }

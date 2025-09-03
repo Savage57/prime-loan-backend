@@ -1,6 +1,6 @@
 import { LoanModel } from '../model';
 import { NotFoundError, } from '../exceptions';
-import { CREATELOAN, UPDATELOAN, LoanApplication } from '../interfaces';
+import { CREATELOAN, UPDATELOAN, LoanApplication, RepaymentHistoryEntry } from '../interfaces';
 
 export class LoanService {
 
@@ -17,6 +17,28 @@ export class LoanService {
     if (!loan) throw new NotFoundError(`No loan found with the id ${uid}`)
 
     return await LoanModel.findByIdAndUpdate(uid, updateFields).then(loan => loan);
+  };
+
+  public async addRepaymentHistory(uid: string, entry: RepaymentHistoryEntry): Promise<void> {
+    await LoanModel.findByIdAndUpdate(uid, {
+      $push: { repayment_history: entry }
+    });
+  };
+
+  public async getOverdueLoans(): Promise<LoanApplication[]> {
+    return await LoanModel.find({
+      outstanding: { $gt: 0 },
+      status: "accepted",
+      repayment_date: { $lt: new Date().toISOString() }
+    });
+  };
+
+  public async getActiveLoansForUser(userId: string): Promise<LoanApplication[]> {
+    return await LoanModel.find({
+      userId,
+      status: { $in: ["pending", "accepted"] },
+      outstanding: { $gt: 0 }
+    });
   };
 
   public async fetchAll(limitValue: number, offsetValue: number): Promise<LoanApplication[]> {

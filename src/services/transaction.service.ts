@@ -55,4 +55,13 @@ export class TransactionService {
       _id: uid,
     });
   };
+
+  public async createWithTrace(transactionData: CREATETRANSACTION & { traceId?: string }): Promise<Transaction> {
+    const newTransaction = await TransactionModel.create(transactionData);
+    return newTransaction;
+  };
+
+  public async findByTraceId(traceId: string): Promise<Transaction[]> {
+    return await TransactionModel.find({ traceId }).sort({ createdAt: -1 });
+  };
 };

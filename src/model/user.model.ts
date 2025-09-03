@@ -1,5 +1,5 @@
 import { Schema, model, SchemaTypes } from 'mongoose';
-import { User, Update } from '../interfaces';
+import { User, Update, LinkedAccount } from '../interfaces';
 
 const updateSchema = new Schema<Update>({
   pin: { type: Number, required: true },
@@ -9,7 +9,7 @@ const updateSchema = new Schema<Update>({
 });
 
 // Define the schema for linked accounts
-const linkedAccountSchema = new Schema(
+const linkedAccountSchema = new Schema<LinkedAccount>(
   {
     id: { type: String, required: true },
     name: { type: String, required: true },
@@ -52,6 +52,8 @@ const userSchema = new Schema<User>(
       email_verified: { type: Boolean, required: false },
       signupBonusReceived: { type: Boolean, required: false },
       phone_verified: { type: Boolean, required: false },
+      ladderIndex: { type: Number, required: false, default: 0 },
+      creditScore: { type: Number, required: false, default: 500 },
       accountNo: { type: String, required: false },
       address: { type: String, required: false },
       pin: { type: String, required: false },

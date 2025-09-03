@@ -1,5 +1,5 @@
 import { Schema, model } from 'mongoose';
-import { LoanApplication } from '../interfaces';
+import { LoanApplication, RepaymentHistoryEntry } from '../interfaces';
 
 // Subscriber Schema
 const SubscriberSchema = new Schema({
@@ -49,7 +49,7 @@ const CreditScoreSchema = new Schema({
 });
 
 // Repayment History Schema
-const RepaymentHistorySchema = new Schema({
+const RepaymentHistorySchema = new Schema<RepaymentHistoryEntry>({
   amount: { type: Number, required: false },
   outstanding: { type: Number, required: false },
   date: { type: String, required: false },
@@ -98,6 +98,7 @@ const LoanApplicationSchema: Schema = new Schema(
     lastInterestAdded: { type: String, required: false },
     rejectionReason: { type: String, required: false },
     debit_account: { type: String, required: true },
+    traceId: { type: String, required: false }, // V2 addition for ledger correlation
   },
   { timestamps: true }
 );

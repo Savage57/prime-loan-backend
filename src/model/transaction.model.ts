@@ -64,6 +64,10 @@ const transactionSchema = new Schema<Transaction>(
       type: String,
       required: true, // Account number
     },
+    traceId: {
+      type: String,
+      required: false, // V2 addition for ledger correlation
+    },
   },
   { timestamps: true }
 );

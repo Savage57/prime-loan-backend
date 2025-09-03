@@ -41,6 +41,8 @@ import {
     initiateAccountLinking,
     confirmAccountLinking
 } from "../validations";
+import { enhancedTransfer } from "../controllers/enhancedTransferController";
+import { idempotencyMiddleware } from "../middlewares";
 
 const router = express.Router();
 
@@ -63,6 +65,7 @@ router.post("/change-password", validateReqBody(changePasswordSchema), changePas
 router.get("/logout", verifyJwtRest(), logout);
 router.get("/bank-listing", verifyJwtRest(), bankListing);
 router.post("/transfer", verifyJwtRest(), validateReqBody(transferSchema), transfer);
+router.post("/transfer-enhanced", verifyJwtRest(), validateReqBody(transferSchema), idempotencyMiddleware(), enhancedTransfer);
 router.post("/wallet-alert", validateReqBody(walletAlertsSchema), walletAlerts);
 router.post("/initiate-linking", verifyJwtRest(), validateReqBody(initiateAccountLinking), initializeLinking);
 router.post("/confirm-linking", verifyJwtRest(), validateReqBody(confirmAccountLinking), confirmLinking);

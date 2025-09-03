@@ -2,23 +2,21 @@
  * Ledger Service - Core financial ledger operations
  * Manages all ledger entries and ensures double-entry bookkeeping principles
  */
-import { LedgerEntry, ILedgerEntry } from './infrastructure/models/LedgerEntry.model';
-import { UuidService } from '../../shared/utils/uuid';
+import LedgerModel from '../model/ledger.model';
+import { UuidService } from '../utils/uuid';
 import mongoose from 'mongoose';
+import { LedgerEntry } from '../interfaces';
 
 export interface CreateLedgerEntryParams {
   traceId: string;
   userId?: string;
   account: string;
   entryType: 'DEBIT' | 'CREDIT';
-  category: 'bill-payment' | 'transfer' | 'loan' | 'savings' | 'fee' | 'refund' | 'settlement' | 'escrow';
+  category: 'bill-payment' | 'transfer' | 'loan' | 'savings' | 'fee' | 'refund' | 'settlement';
   subtype?: string;
   amount: number; // in kobo
   currency?: string;
-  balanceBefore?: number;
-  balanceAfter?: number;
   status?: 'PENDING' | 'COMPLETED' | 'FAILED';
-  relatedTo?: string;
   meta?: Record<string, any>;
   idempotencyKey?: string;
 }
@@ -30,14 +28,14 @@ export class LedgerService {
   static async createEntry(
     params: CreateLedgerEntryParams,
     session?: mongoose.ClientSession
-  ): Promise<ILedgerEntry> {
+  ): Promise<LedgerEntry> {
     const entry = {
       ...params,
       currency: params.currency || 'NGN',
       status: params.status || 'PENDING'
     };
 
-    const [ledgerEntry] = await LedgerEntry.create([entry], { session });
+    const [ledgerEntry] = await LedgerModel.create([entry], { session });
     return ledgerEntry;
   }
 
@@ -57,7 +55,7 @@ export class LedgerService {
       idempotencyKey?: string;
       session?: mongoose.ClientSession;
     } = {}
-  ): Promise<{ debit: ILedgerEntry; credit: ILedgerEntry }> {
+  ): Promise<{ debit: LedgerEntry; credit: LedgerEntry }> {
     const { session, ...commonParams } = options;
 
     const debit = await this.createEntry({
@@ -84,8 +82,8 @@ export class LedgerService {
   /**
    * Get ledger entries by trace ID
    */
-  static async getByTraceId(traceId: string): Promise<ILedgerEntry[]> {
-    return LedgerEntry.find({ traceId }).sort({ createdAt: 1 });
+  static async getByTraceId(traceId: string): Promise<LedgerEntry[]> {
+    return LedgerModel.find({ traceId }).sort({ createdAt: 1 });
   }
 
   /**
@@ -96,7 +94,7 @@ export class LedgerService {
     status: 'PENDING' | 'COMPLETED' | 'FAILED',
     session?: mongoose.ClientSession
   ): Promise<void> {
-    await LedgerEntry.findByIdAndUpdate(
+    await LedgerModel.findByIdAndUpdate(
       entryId,
       { 
         status,
@@ -110,7 +108,7 @@ export class LedgerService {
    * Get user wallet balance from ledger
    */
   static async getUserWalletBalance(userId: string): Promise<number> {
-    const result = await LedgerEntry.aggregate([
+    const result = await LedgerModel.aggregate([
       {
         $match: {
           account: `user_wallet:${userId}`,
@@ -140,7 +138,7 @@ export class LedgerService {
    * Find reconciliation inconsistencies
    */
   static async findInconsistencies(): Promise<any[]> {
-    return LedgerEntry.aggregate([
+    return LedgerModel.aggregate([
       {
         $match: { status: 'COMPLETED' }
       },

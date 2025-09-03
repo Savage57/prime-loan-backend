@@ -1,6 +1,6 @@
 import { UserModel } from '../model';
 import { NotFoundError, } from '../exceptions';
-import { CREATEUSER, UPDATEUSER, User } from '../interfaces';
+import { CREATEUSER, UPDATEUSER, User, LinkedAccount } from '../interfaces';
 
 export class UserService {
 
@@ -19,6 +19,17 @@ export class UserService {
     const updatedUser = await UserModel.findByIdAndUpdate(uid, { $set: { [updateFields]: data } }, { new: true }) // Ensures the updated document is returned);
 
     return updatedUser;
+  };
+
+  public async updateLinkedAccounts(uid: string, linkedAccounts: LinkedAccount[]): Promise<User | null> {
+    const user = await UserModel.findById(uid);
+    if (!user) throw new NotFoundError(`No user found with the id ${uid}`);
+
+    return await UserModel.findByIdAndUpdate(
+      uid, 
+      { $set: { linked_accounts: linkedAccounts } }, 
+      { new: true }
+    );
   };
 
   public async fetchAll(limitValue: number, offsetValue: number): Promise<User[]> {
@@ -85,5 +96,17 @@ export class UserService {
     await UserModel.deleteOne(
       { _id: uid, }
     )
+  };
+
+  public async getWalletBalance(uid: string): Promise<number> {
+    const user = await UserModel.findById(uid);
+    if (!user) return 0;
+    return Number(user.user_metadata?.wallet || 0);
+  };
+
+  public async updateWalletBalance(uid: string, newBalance: number): Promise<void> {
+    await UserModel.findByIdAndUpdate(uid, {
+      $set: { 'user_metadata.wallet': String(newBalance) }
+    });
   };
 };
