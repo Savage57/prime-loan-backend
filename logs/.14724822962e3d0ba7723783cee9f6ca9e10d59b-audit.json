@@ -14,6 +14,11 @@
             "date": 1756899372642,
             "name": "/home/project/logs/2025-09-03.log",
             "hash": "5f3ef0e8a1d9759e9eabf99a77fcd0d5a5347d882221274b0d0b40b14cdcd7e9"
+        },
+        {
+            "date": 1757499120116,
+            "name": "/home/project/logs/2025-09-10.log",
+            "hash": "bb3f0e9de850ab8bf57ff86771c5522f710c3bee0122b1af33a77cb893bb9945"
         }
     ],
     "hashType": "sha256"
