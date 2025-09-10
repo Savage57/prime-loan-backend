@@ -9,11 +9,11 @@ import { errorHandler } from './middlewares/errorHandler';
 import { verifyJwtRest } from '../middlewares';
 
 // Import v2 controllers
-import { BillPaymentController } from '../modules/bill-payments/http/BillPaymentController';
-import { TransferController } from '../modules/transfers/http/TransferController';
-import { LoanController } from '../modules/loans/http/LoanController';
-import { SavingsController } from '../modules/savings/http/SavingsController';
-import { AdminController } from '../modules/admin/controllers/AdminController';
+import { BillPaymentController } from '../modules/bill-payments/bill-payment.controller';
+import { TransferController } from '../modules/transfers/transfer.controller';
+import { LoanController } from '../modules/loans/loan.controller';
+import { SavingsController } from '../modules/savings/savings.controller';
+import { AdminController } from '../modules/admin/AdminController';
 
 const router = express.Router();
 
@@ -23,103 +23,88 @@ router.use(requestIdMiddleware);
 // Bill Payments V2
 router.post('/bill-payments/initiate', 
   verifyJwtRest(), 
-  idempotencyMiddleware(),
-  BillPaymentController.initiate
+  idempotencyMiddleware,
+  BillPaymentController.initiate as any
 );
 
 router.get('/bill-payments/:id/status', 
   verifyJwtRest(),
-  BillPaymentController.getStatus
+  BillPaymentController.getStatus as any
 );
 
 // Transfers V2
 router.post('/transfers', 
   verifyJwtRest(), 
-  idempotencyMiddleware(),
-  TransferController.initiate
+  idempotencyMiddleware,
+  TransferController.initiate as any
 );
 
 router.get('/transfers/:id/status', 
   verifyJwtRest(),
-  TransferController.getStatus
+  TransferController.getStatus as any
 );
 
 // Loans V2
 router.post('/loans/request', 
   verifyJwtRest(), 
-  idempotencyMiddleware(),
-  LoanController.requestLoan
+  idempotencyMiddleware,
+  LoanController.requestLoan as any
 );
 
 router.post('/loans/:id/repay', 
   verifyJwtRest(), 
-  idempotencyMiddleware(),
-  LoanController.repayLoan
+  idempotencyMiddleware,
+  LoanController.repayLoan as any
 );
 
 router.get('/loans/:id/status', 
   verifyJwtRest(),
-  LoanController.getStatus
+  LoanController.getLoanStatus as any
 );
 
 // Savings V2
 router.post('/savings/plans', 
   verifyJwtRest(), 
-  idempotencyMiddleware(),
-  SavingsController.createPlan
+  idempotencyMiddleware,
+  SavingsController.createPlan as any
 );
 
 router.post('/savings/plans/:id/deposit', 
   verifyJwtRest(), 
-  idempotencyMiddleware(),
-  SavingsController.deposit
+  idempotencyMiddleware,
+  SavingsController.createPlan as any
 );
 
 router.post('/savings/plans/:id/withdraw', 
   verifyJwtRest(), 
-  idempotencyMiddleware(),
-  SavingsController.withdraw
+  idempotencyMiddleware,
+  SavingsController.withdraw as any
 );
 
 router.get('/savings/plans', 
   verifyJwtRest(),
-  SavingsController.getPlans
+  SavingsController.getPlans as any
 );
 
 // Admin Routes
 router.get('/admin/transactions/:traceId', 
   verifyJwtRest(),
-  AdminController.getTransactionDetails
+  AdminController.getTransactionDetails as any
 );
 
 router.post('/admin/transfers/:id/requery', 
   verifyJwtRest(),
-  AdminController.requeryTransfer
-);
-
-router.get('/admin/manual-reviews', 
-  verifyJwtRest(),
-  AdminController.getManualReviews
-);
-
-router.post('/admin/loans/:loanId/manual-approve', 
-  verifyJwtRest(),
-  AdminController.manualApproveLoan
-);
-
-router.post('/admin/loans/:loanId/manual-reject', 
-  verifyJwtRest(),
-  AdminController.manualRejectLoan
+  AdminController.requeryTransfer as any
 );
 
 router.get('/admin/profits', 
   verifyJwtRest(),
-  AdminController.getProfitReport
+  AdminController.getProfitReport as any
 );
 
 router.get('/admin/reconciliation/inconsistencies', 
   verifyJwtRest(),
-  AdminController.getReconciliationInconsistencies
+  AdminController.getReconciliationInconsistencies as any
 );
 
 // Error handling

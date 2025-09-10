@@ -3,8 +3,8 @@
  * Processes matured savings plans and applies interest
  */
 import { QueueService } from '../../shared/queue';
-import { SavingsPlan } from '../../modules/savings/infrastructure/models/SavingsPlan.model';
-import { LedgerService } from '../../modules/ledger/service';
+import { SavingsPlan } from '../../modules/savings/savings.plan.model';
+import { LedgerService } from '../../modules/ledger/LedgerService';
 import { DatabaseService } from '../../shared/db';
 import { UuidService } from '../../shared/utils/uuid';
 import pino from 'pino';
@@ -48,14 +48,14 @@ export class SavingsMaturitiesWorker {
       for (const plan of maturedPlans) {
         try {
           await this.processMaturedPlan(plan);
-        } catch (error) {
+        } catch (error: any) {
           logger.error({ 
             planId: plan._id, 
             error: error.message 
           }, 'Error processing matured plan');
         }
       }
-    } catch (error) {
+    } catch (error: any) {
       logger.error({ error: error.message }, 'Error in savings maturities worker');
     }
   }

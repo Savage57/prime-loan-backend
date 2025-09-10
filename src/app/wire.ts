@@ -2,19 +2,19 @@
  * Dependency Injection Container
  * Simple wiring for services and providers to enable easier testing and swapping
  */
-import { VfdProvider } from '../shared/providers/vfdProvider';
-import { LedgerService } from '../modules/ledger/service';
-import { BillPaymentService } from '../modules/bill-payments/application/BillPaymentService';
-import { TransferService } from '../modules/transfers/application/TransferService';
-import { LoanApplicationService } from '../modules/loans/application/LoanApplicationService';
-import { SavingsService } from '../modules/savings/application/SavingsService';
+import { VfdProvider } from '../shared/providers/vfd.provider';
+import { LedgerService } from '../modules/ledger/LedgerService';
+import { BillPaymentService } from '../modules/bill-payments/bill.payment.service';
+import { TransferService } from '../modules/transfers/transfer.service';
+import { LoanService } from '../modules/loans/loan.service';
+import { SavingsService } from '../modules/savings/savings.service';
 
 export interface ServiceContainer {
   vfdProvider: VfdProvider;
   ledgerService: typeof LedgerService;
   billPaymentService: typeof BillPaymentService;
   transferService: typeof TransferService;
-  loanApplicationService: typeof LoanApplicationService;
+  loanService: typeof LoanService;
   savingsService: typeof SavingsService;
 }
 
@@ -28,7 +28,7 @@ export class Wire {
         ledgerService: LedgerService,
         billPaymentService: BillPaymentService,
         transferService: TransferService,
-        loanApplicationService: LoanApplicationService,
+        loanService: LoanService,
         savingsService: SavingsService
       };
     }
