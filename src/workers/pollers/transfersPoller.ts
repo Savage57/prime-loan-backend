@@ -3,10 +3,10 @@
  * Polls pending transfers and handles reconciliation
  */
 import { QueueService } from '../../shared/queue';
-import { Transfer } from '../../modules/transfers/infrastructure/models/Transfer.model';
-import { LedgerService } from '../../modules/ledger/service';
+import { Transfer } from '../../modules/transfers/transfer.model';
+import { LedgerService } from '../../modules/ledger/LedgerService';
 import { DatabaseService } from '../../shared/db';
-import { VfdProvider } from '../../shared/providers/vfdProvider';
+import { VfdProvider } from '../../shared/providers/vfd.provider';
 import pino from 'pino';
 
 const logger = pino({ name: 'transfers-poller' });
@@ -60,19 +60,19 @@ export class TransfersPoller {
           }
 
           // Query provider status
-          if (transfer.providerRef) {
-            const providerStatus = await this.vfdProvider.queryTransfer(transfer.providerRef);
+          if (transfer.reference) {
+            const providerStatus = await this.vfdProvider.queryTransaction(transfer.reference);
             await this.updateTransferStatus(transfer, providerStatus);
           }
 
-        } catch (error) {
+        } catch (error: any) {
           logger.error({ 
             transferId: transfer._id, 
             error: error.message 
           }, 'Error polling transfer');
         }
       }
-    } catch (error) {
+    } catch (error: any) {
       logger.error({ error: error.message }, 'Error in transfers poller');
     }
   }

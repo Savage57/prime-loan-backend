@@ -3,8 +3,8 @@
  * Applies daily penalties to overdue loans
  */
 import { QueueService } from '../../shared/queue';
-import { LoanModel } from '../../model';
-import { LedgerService } from '../../modules/ledger/service';
+import Loan from '../../modules/loans/loan.model';
+import { LedgerService } from '../../modules/ledger/LedgerService';
 import { DatabaseService } from '../../shared/db';
 import { UuidService } from '../../shared/utils/uuid';
 import pino from 'pino';
@@ -41,7 +41,7 @@ export class LoanPenaltiesCron {
 
     try {
       // Find overdue loans
-      const overdueLoans = await LoanModel.find({
+      const overdueLoans = await Loan.find({
         status: 'accepted',
         outstanding: { $gt: 0 },
         repayment_date: { $lt: new Date() }
@@ -52,14 +52,14 @@ export class LoanPenaltiesCron {
       for (const loan of overdueLoans) {
         try {
           await this.applyPenaltyToLoan(loan, penaltyRate);
-        } catch (error) {
+        } catch (error: any) {
           logger.error({ 
             loanId: loan._id, 
             error: error.message 
           }, 'Error applying penalty to loan');
         }
       }
-    } catch (error) {
+    } catch (error: any) {
       logger.error({ error: error.message }, 'Error in loan penalties cron');
     }
   }

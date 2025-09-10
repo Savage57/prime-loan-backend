@@ -3,8 +3,8 @@
  * Polls pending bill payments and updates status based on provider responses
  */
 import { QueueService } from '../../shared/queue';
-import { BillPayment } from '../../modules/bill-payments/infrastructure/models/BillPayment.model';
-import { LedgerService } from '../../modules/ledger/service';
+import { BillPayment } from '../../modules/bill-payments/bill-payment.model';
+import { LedgerService } from '../../modules/ledger/LedgerService';
 import { DatabaseService } from '../../shared/db';
 import pino from 'pino';
 
@@ -61,14 +61,14 @@ export class BillPaymentsPoller {
           // const providerStatus = await this.queryProviderStatus(payment);
           // await this.updatePaymentStatus(payment, providerStatus);
 
-        } catch (error) {
+        } catch (error: any) {
           logger.error({ 
             billPaymentId: payment._id, 
             error: error.message 
           }, 'Error polling bill payment');
         }
       }
-    } catch (error) {
+    } catch (error: any) {
       logger.error({ error: error.message }, 'Error in bill payments poller');
     }
   }

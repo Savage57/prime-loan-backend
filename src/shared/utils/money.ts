@@ -29,7 +29,7 @@ export class Money {
   /**
    * Validate amount is positive
    */
-  static isValidAmount(kobo: number): boolean {
-    return Number.isInteger(kobo) && kobo > 0;
+  static isValidAmount(amount: number): boolean {
+    return Number.isInteger(amount) && amount > 0;
   }
 }

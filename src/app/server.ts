@@ -5,8 +5,7 @@
 import express from 'express';
 import { DatabaseService } from '../shared/db';
 import { PORT } from '../config';
-import createV1App from '../app';
-import v2Routes from './routes.v2';
+import Routes from './routes.v2';
 import { requestIdMiddleware } from './middlewares/requestId';
 import { errorHandler } from './middlewares/errorHandler';
 import pino from 'pino';
@@ -22,11 +21,8 @@ export async function createServer() {
   // Add request ID middleware globally
   app.use(requestIdMiddleware);
 
-  // Mount v1 routes (existing functionality)
-  await createV1App(app);
-
   // Mount v2 routes (new clean architecture)
-  app.use('/v2', v2Routes);
+  app.use('/api', Routes);
 
   // Global error handler
   app.use(errorHandler);
@@ -40,8 +36,7 @@ export async function startServer() {
     
     const server = app.listen(PORT, () => {
       logger.info(`Prime Finance server listening on port ${PORT}`);
-      logger.info('V1 routes: /api/*');
-      logger.info('V2 routes: /v2/*');
+      logger.info('V2 routes: /api/*');
     });
 
     // Graceful shutdown
@@ -54,7 +49,7 @@ export async function startServer() {
     });
 
     return server;
-  } catch (error) {
+  } catch (error: any) {
     logger.error({ error: error.message }, 'Failed to start server');
     process.exit(1);
   }

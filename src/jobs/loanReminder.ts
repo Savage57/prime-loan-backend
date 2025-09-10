@@ -210,17 +210,4 @@ export const sendMessageForLoan = async () => {
   }
 };
 
-export async function sendEmail(to: string, subject: string, text: string) {
-  try {
-    const info = await transporter.sendMail({
-      from: "info@primefinance.live", // Must match Mailgun's verified domain
-      to,
-      subject,
-      text,
-    });
-  } catch (error: any) {
-    console.error(`❌ Email sending failed:`, error.message);
-  }
-}
-
 
