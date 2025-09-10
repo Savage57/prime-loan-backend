@@ -7,10 +7,16 @@
         "build": "tsc",
         "start": "node dist/server.js",
         "start:v2": "node dist/app/server.js",
+        "start:workers": "concurrently \"npm run workers:bill-payments\" \"npm run workers:transfers\" \"npm run workers:penalties\" \"npm run workers:savings\"",
         "workers:bill-payments": "node dist/workers/pollers/billPaymentsPoller.js",
         "workers:transfers": "node dist/workers/pollers/transfersPoller.js",
         "workers:penalties": "node dist/workers/loans/penaltiesCron.js",
-        "workers:savings": "node dist/workers/savings/maturitiesWorker.js"
+        "workers:savings": "node dist/workers/savings/maturitiesWorker.js",
+        "test": "jest",
+        "test:watch": "jest --watch",
+        "test:coverage": "jest --coverage",
+        "lint": "eslint src/**/*.ts",
+        "lint:fix": "eslint src/**/*.ts --fix"
     },
     "dependencies": {
         "@joi/date": "^2.1.1",

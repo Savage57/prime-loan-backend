@@ -1,7 +1,9 @@
 import express, { Application, Request, Response } from "express";
 import morgan from "morgan";
 import helmet from "helmet";
+import { specs, swaggerUi, swaggerUiOptions } from "./swagger.config";
 import userRoutes from "./routes/userRoutes";
+import adminRoutes from "./routes/adminRoutes";
 import kycRoutes from "./routes/kycRoutes";
 import paybillsRoutes from "./routes/paybillsRoutes";
 import loanRoutes from "./routes/loanRoutes";
@@ -28,8 +30,21 @@ export default async (app: Application) => {
     app.use(cookieParser());
     app.use(compression());
   
+    // Swagger Documentation
+    app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(specs, swaggerUiOptions));
+    
+    // Health check endpoint
+    app.get('/health', (req: Request, res: Response) => {
+      res.status(200).json({
+        status: 'healthy',
+        timestamp: new Date().toISOString(),
+        version: '2.0.0'
+      });
+    });
+  
     // Routes
     app.use("/api/users", userRoutes);
+    app.use("/api/admin", adminRoutes);
     app.use("/api/kyc", kycRoutes);
     app.use("/api/paybills", paybillsRoutes);
     app.use("/api/loans", loanRoutes);
