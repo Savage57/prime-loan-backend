@@ -25,7 +25,7 @@ import {
     BettingCompanyData,
     InternetNetworkData,
     ExamTypeData
-} from "../../interfaces";
+} from "../../modules/bill-payments/bill-payment.interface";
 
 function addEightPercent(value: number) {
   return String(value + (value * 0.03));

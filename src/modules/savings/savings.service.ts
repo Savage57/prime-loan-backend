@@ -93,7 +93,7 @@ export class SavingsService {
         if(providerRes.status == "00") {
           const trxnRes = await TransferService.completeTransfer(trxn.reference, "savings-deposit");
 
-         const penalty = await SettingsService.getSettings()
+         const setting = await SettingsService.getSettings()
 
           const [plan] = await SavingsPlan.create([{
             userId: params.userId,
@@ -102,12 +102,12 @@ export class SavingsService {
             targetAmount: params.targetAmount ? params.targetAmount : undefined,
             durationDays: params.durationDays,
             principal: params.amount,
-            interestRate: params.interestRate,
+            interestRate: Number(setting.savingsInterestRate) * Number(params?.durationDays || 0),
             locked: params.planType === 'LOCKED',
             maturityDate,
             status: 'ACTIVE',
             meta: {
-              penaltyRate: penalty.savingsPenalty,
+              penaltyRate: setting.savingsPenalty,
               autoRenew: params.renew,
               compoundingFrequency: 'maturity'
             }
@@ -177,18 +177,20 @@ export class SavingsService {
           const penaltyRate = plan.meta?.penaltyRate || 0.05; // 5% default
           penalty = Math.floor(amount * penaltyRate);
           netAmount = amount - penalty;
-        }
-    
-        const userId = params.userId;
+        } 
 
-        const user = await User.findById(userId);
+        if (plan.maturityDate && new Date() > plan.maturityDate) {
+          netAmount = amount + Math.floor((plan.principal * (plan.interestRate * (plan.durationDays || 0))) * 100);
+        }
+
+        const user = await User.findById(plan.userId);
         const to = (await vfdProvider.getAccountInfo(user? user.user_metadata.accountNo : "trx-user")).data;
         const from = (await vfdProvider.getPrimeAccountInfo()).data;
 
         // 1. Create transfer record + ledger entry (PENDING)
         const trxn = await TransferService.initiateTransfer({
           fromAccount: from.accountNo,
-          userId,
+          userId: plan.userId,
           toAccount: to.accountNo,
           amount: params.amount,
           transferType: "intra",
@@ -303,5 +305,100 @@ export class SavingsService {
       .skip(skip)
       .limit(limit)
       .sort({ createdAt: -1 });
+  }
+
+   static async getAdminSavingsStats() {
+    const now = new Date();
+
+    // Fetch all savings plans
+    const plans = await SavingsPlan.find({}, {
+      principal: 1,
+      interestRate: 1,
+      durationDays: 1,
+      maturityDate: 1,
+      status: 1,
+      createdAt: 1
+    });
+
+    let totalPlans = 0;
+    let totalPrincipal = 0;
+    let totalInterestExpected = 0;
+    let realizedProfit = 0;
+    let unrealizedProfit = 0;
+    let activePlans = 0;
+    let maturedPlans = 0;
+    let withdrawnPlans = 0;
+
+    for (const plan of plans) {
+      totalPlans++;
+      totalPrincipal += plan.principal || 0;
+
+      // Calculate expected interest (simple: principal * rate * (duration/365))
+      const duration = plan.durationDays || 0;
+      const expectedInterest = Math.floor((plan.principal || 0) * (plan.interestRate / 100) * (duration / 365));
+      totalInterestExpected += expectedInterest;
+
+      if (plan.status === "ACTIVE") {
+        activePlans++;
+        if (plan.maturityDate && plan.maturityDate <= now) {
+          maturedPlans++;
+        }
+      }
+
+      if (plan.status === "COMPLETED") {
+        withdrawnPlans++;
+        // Assume realized profit = expectedInterest
+        realizedProfit += expectedInterest;
+      } else {
+        unrealizedProfit += expectedInterest;
+      }
+    }
+
+    return {
+      totalPlans,
+      totalPrincipal,
+      totalInterestExpected,
+      realizedProfit,
+      unrealizedProfit,
+      activePlans,
+      maturedPlans,
+      withdrawnPlans
+    };
+  }
+
+  /**
+   * Get savings by category for admin
+   */
+  static async getSavingsByCategory(category: "active" | "matured" | "withdrawn", page = 1, limit = 20) {
+    const now = new Date();
+    let filter: any = {};
+
+    if (category === "active") {
+      filter.status = "ACTIVE";
+    } else if (category === "matured") {
+      filter.status = "ACTIVE";
+      filter.maturityDate = { $lte: now };
+    } else if (category === "withdrawn") {
+      filter.status = { $in: ["WITHDRAWN", "COMPLETED"] };
+    }
+
+    const skip = (page - 1) * limit;
+
+    const [plans, total] = await Promise.all([
+      SavingsPlan.find(filter).skip(skip).limit(limit).sort({ createdAt: -1 }),
+      SavingsPlan.countDocuments(filter)
+    ]);
+
+    // Join with user details
+    const userIds = plans.map(p => p.userId);
+    const users = await User.find({ _id: { $in: userIds } }, { email: 1, user_metadata: 1 });
+
+    return {
+      plans,
+      users,
+      total,
+      page,
+      pages: Math.max(1, Math.ceil(total / limit))
+    };
   }
 }

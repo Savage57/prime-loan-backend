@@ -1,15 +1,17 @@
-import { encryptPassword, decodePassword } from "../../utils";
+import { encryptPassword, decodePassword } from "../../shared/utils/passwordUtils";
 import { VfdProvider } from "../../shared/providers/vfd.provider";
 import { NotificationService } from "../notifications/notification.service";
 import { ConflictError, UnauthorizedError, NotFoundError, BadRequestError } from "../../exceptions";
 import User from "./user.model";
 import { TransferService } from "../transfers/transfer.service";
-import { getCurrentTimestamp } from "../../utils/convertDate";
+import { getCurrentTimestamp } from "../../shared/utils/convertDate";
 import { User as IUser } from "./user.interface";
 import { ACCESS_TOKEN_SECRET, REFRESH_TOKEN_SECRET } from "../../config";
 import { ACCESS_TOKEN_EXPIRES_IN, REFRESH_TOKEN_EXPIRES } from "../../constants";
 import JWT from "jsonwebtoken";
 import { LedgerService } from "../ledger/LedgerService";
+import { SavingsPlan } from "../savings/savings.plan.model";
+import Loan from "../loans/loan.model";
 
 export class UserService {
     private static vfdProvider = new VfdProvider();
@@ -28,7 +30,7 @@ export class UserService {
         dob: string, 
         pin: string 
     }) {
-        const { email, name, surname, phone, bvn, nin, dob, pin } = data;
+        const { email, name, surname, phone, bvn, nin, password, dob, pin } = data;
 
         // Enhanced validation
         if (!email || !name || !surname || !phone || !bvn || !password || !nin || !dob || !pin) {
@@ -163,60 +165,66 @@ export class UserService {
             throw new BadRequestError("Email and password are required");
         }
 
+        // Find user (as a Mongoose doc so we can save)
         const user = await User.findOne({ email });
         if (!user) throw new UnauthorizedError("Invalid Email");
-        
-        if(user?.status && user.status !== "active") 
+
+        if (user?.status && user.status !== "active") {
             throw new UnauthorizedError(`Account has been suspended! Contact admin for revert action.`);
+        }
 
-        const { password: encrypted } = user;
-
-        // decrypt found user password
-        const decrypted = decodePassword(encrypted);
-    
-        // compare decrypted password with sent password
-        if (password !== decrypted)
+        // Verify password
+        const decrypted = decodePassword(user.password);
+        if (password !== decrypted) {
             throw new UnauthorizedError(`Incorrect Password!`);
-    
-        const {
-            password: dbPassword, // strip out password so would'nt send back to client
-            ..._user
-        } = user;
+        }
 
+        // JWT payload
         const userToSign = {
             accountType: user.role,
-            id: _user._id
-        }
-    
-        // create JWTs
+            id: user._id
+        };
+
+        // Create JWTs
         const accessToken = JWT.sign(userToSign, String(ACCESS_TOKEN_SECRET), {
             expiresIn: ACCESS_TOKEN_EXPIRES_IN,
         });
-    
+
         const refreshToken = JWT.sign(userToSign, String(REFRESH_TOKEN_SECRET), {
             expiresIn: REFRESH_TOKEN_EXPIRES,
         });
-    
-        // update current user refresh token
-        const refreshTokens = user.refresh_tokens
-        refreshTokens.push(refreshToken)
-        user.refresh_tokens = refreshTokens;
-        // Limit refresh tokens to prevent memory bloat
-        if (refreshTokens.length > 5) {
-            refreshTokens.splice(0, refreshTokens.length - 5);
+
+        // Manage refresh tokens
+        user.refresh_tokens.push(refreshToken);
+        if (user.refresh_tokens.length > 5) {
+            user.refresh_tokens.splice(0, user.refresh_tokens.length - 5);
         }
-        
+
+        // Update last sign in
         user.last_sign_in_at = getCurrentTimestamp();
         await user.save();
 
-        // Send login alert (async)
-        await NotificationService.sendLoginAlert(
+        // Send login alert (async, non-blocking)
+        NotificationService.sendLoginAlert(
             user.email,
-            user.user_metadata.first_name || ""
-        );
+            user.user_metadata?.first_name || ""
+        ).catch(() => null);
 
-        return { ..._user, refreshToken, accessToken };
+        // Convert to plain object after saving
+        const userObj = user.toObject();
+
+        // Remove sensitive/internal fields
+        delete (userObj as any).password;
+        delete (userObj as any).__v;
+        delete (userObj as any).refresh_tokens;
+
+        return {
+            ...userObj,
+            refreshToken,
+            accessToken,
+        };
     }
+
 
     /**
      * Enhanced update with validation
@@ -399,11 +407,17 @@ export class UserService {
     }
 
     /**
+     * Find user by email
+     */
+    static async findByEmail(email: string) {
+        return User.findOne({ email });
+    }
+
+    /**
      * Get user transaction history with pagination
      */
     static async getUserTransactionHistory(userId: string, page = 1, limit = 20) {
-        const transferService = new TransferService();
-        return transferService.transfers(userId, page, limit);
+        return await TransferService.transfers(userId, page, limit);
     }
 
     /**

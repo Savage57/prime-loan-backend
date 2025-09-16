@@ -37,7 +37,6 @@ export class TransferController {
     const userId = req.user!._id;
     const idempotencyKey = req.idempotencyKey!;
 
-    // 1. Create transfer record + ledger entry (PENDING)
     const result = await TransferService.initiateTransfer({
       fromAccount,
       userId,
@@ -50,7 +49,6 @@ export class TransferController {
     });
 
     try {
-      // 2. Send transfer to VFD
       const transferReq: TransferRequest = {
         uniqueSenderAccountId: toBank == '999999'? fromSavingsId : "",
         fromAccount,
@@ -76,10 +74,7 @@ export class TransferController {
         await TransferService.completeTransfer(result.reference);
         return res.status(200).json({
           status: "success",
-          data: {
-            ...result,
-            provider: providerResp,
-          },
+          data: { ...result, provider: providerResp },
         });
       }
 
@@ -92,14 +87,11 @@ export class TransferController {
   }
 
   /**
-   * Get transfer status
+   * Get transfer status (via provider query)
    */
   static async getStatus(req: ProtectedRequest, res: Response, next: NextFunction) {
     try {
-      const { reference, sessionId } = req.query as {
-        reference?: string;
-        sessionId?: string;
-      };
+      const { reference, sessionId } = req.query as { reference?: string; sessionId?: string };
 
       if (!reference && !sessionId) {
         return res.status(400).json({
@@ -108,15 +100,56 @@ export class TransferController {
         });
       }
 
-      const statusResp = await TransferController.vfdProvider.queryTransaction(
-        reference,
-        sessionId
-      );
+      const statusResp = await TransferController.vfdProvider.queryTransaction(reference, sessionId);
 
-      res.status(200).json({
-        status: "success",
-        data: statusResp,
-      });
+      res.status(200).json({ status: "success", data: statusResp });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * Get transfer by transactionId
+   */
+  static async getTransfer(req: ProtectedRequest, res: Response, next: NextFunction) {
+    try {
+      const { id } = req.params;
+      const transfer = await TransferService.transfer(id);
+      if (!transfer) {
+        return res.status(404).json({ status: "error", message: "Transfer not found" });
+      }
+      res.status(200).json({ status: "success", data: transfer });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * Get paginated transfers for authenticated user
+   */
+  static async getTransfers(req: ProtectedRequest, res: Response, next: NextFunction) {
+    try {
+      const userId = req.user!._id;
+      const page = Number(req.query.page) || 1;
+      const limit = Number(req.query.limit) || 10;
+
+      const result = await TransferService.transfers(userId, page, limit);
+      res.status(200).json({ status: "success", data: result });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * Handle incoming wallet credit alerts (webhook from VFD)
+   */
+  static async walletAlert(req: any, res: Response, next: NextFunction) {
+    try {
+      const txn = await TransferService.walletAlerts(req.body);
+      if (!txn) {
+        return res.status(404).json({ status: "error", message: "User account not found" });
+      }
+      res.status(200).json({ status: "success", data: txn });
     } catch (error) {
       next(error);
     }

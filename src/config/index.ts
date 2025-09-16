@@ -1,6 +1,6 @@
 import '../config/envConfig';
 import { ConnectOptions } from 'mongoose';
-import { CABLETV, METERTYPE, MOBILENETWORKS, BONUSTYPE } from '../interfaces';
+import { CABLETV, METERTYPE, MOBILENETWORKS, BONUSTYPE } from '../modules/bill-payments/bill-payment.interface';
 
 const PORT = process.env.PORT || 3000;
 export const customerKey = process.env.CUSTOMER_KEY!;

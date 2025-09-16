@@ -7,11 +7,12 @@ import mongoose from "mongoose";
 import { Transfer, Transaction } from "./transfer.model"; // new model
 import { Transaction as ITransaction, Transfer as ITransfer } from './transfer.interface';
 import User from "../users/user.model";
+import { DB_URL, DB_OPTIONS } from "../../config";
 
 const BATCH_SIZE = 500;
 
 async function migrateTransactions() {
-  await mongoose.connect(process.env.MONGO_URI || "mongodb://localhost:27017/yourdb");
+  await mongoose.connect(DB_URL as string, DB_OPTIONS);
 
   let migrated = 0;
   let skipped = 0;

@@ -1,91 +1,241 @@
+// src/routes/admin.routes.ts
 /**
- * Admin Routes - Administrative endpoints
- * Comprehensive admin functionality with proper RBAC
+ * Admin Routes - Comprehensive Administrative Endpoints
+ *
+ * - All AdminController endpoints are wired here
+ * - Extensive Swagger (OpenAPI) comments included (components + route docs)
+ * - Joi validation applied via validateReqBody / validateReqQuery
+ *
+ * NOTE: adjust middleware import paths if your project stores them elsewhere.
  */
-import express from 'express';
-import { AdminController } from '../modules/admin/AdminController';
-import { AdminService } from '../modules/admin/admin.service';
-import { LoanController } from '../modules/loans/loan.controller';
-import { SavingsController } from '../modules/savings/savings.controller';
-import { UserService } from '../modules/users/user.service';
-import { verifyJwtRest, validateReqBody } from '../middlewares';
-import { 
-  createAdminAccountSchema, 
-  activateAdminReqBodySchema, 
-  activateUserReqBodySchema 
-} from '../validations';
-import { idempotencyMiddleware } from '../shared/idempotency/middleware';
-import { checkPermission } from '../shared/utils/checkPermission';
+
+import express from "express";
+import { AdminController } from "../modules/admin/admin.controller";
+import { LoanController } from "../modules/loans/loan.controller";
+import { SavingsController } from "../modules/savings/savings.controller";
+import { verifyJwtRest, validateReqBody, validateReqQuery } from "../shared/middlewares";
+import {
+  createAdminAccountSchema,
+  activateAdminReqBodySchema,
+  activateUserReqBodySchema,
+  getUsersQuerySchema,
+  bulkLoanActionSchema,
+  disburseLoanSchema,
+  rejectLoanSchema,
+  loanListQuerySchema,
+  businessReportQuerySchema,
+  profitReportQuerySchema,
+  flaggedQuerySchema,
+  updateAdminPermissionsSchema,
+  activityLogsQuerySchema,
+  changePasswordSchema,
+  initiateResetSchema,
+  updatePasswordOrPinSchema,
+  updateUserSchema,
+  validateResetSchema,
+  loginSchema
+} from "../validations";
+import { idempotencyMiddleware } from "../shared/idempotency/middleware";
+import { checkPermission } from "../shared/utils/checkPermission";
+
+/**
+ * Swagger components (schemas) used by routes below.
+ *
+ * You can copy this block to your central OpenAPI config if you prefer centralization.
+ *
+ * components:
+ *   schemas:
+ *     CreateAdminRequest:
+ *       type: object
+ *       required: [email, name, surname, password, phone]
+ *       properties:
+ *         email:
+ *           type: string
+ *           format: email
+ *         name:
+ *           type: string
+ *         surname:
+ *           type: string
+ *         password:
+ *           type: string
+ *           minLength: 6
+ *         phone:
+ *           type: string
+ *         is_super_admin:
+ *           type: boolean
+ *         permissions:
+ *           type: array
+ *           items:
+ *             type: string
+ *
+ *     ActivateRequest:
+ *       type: object
+ *       required: [adminId, status]
+ *       properties:
+ *         adminId:
+ *           type: string
+ *         status:
+ *           type: string
+ *           enum: [active, inactive]
+ *
+ *     ActivateUserRequest:
+ *       type: object
+ *       required: [userId, status]
+ *       properties:
+ *         userId:
+ *           type: string
+ *         status:
+ *           type: string
+ *           enum: [active, inactive]
+ *
+ *     PaginationQuery:
+ *       type: object
+ *       properties:
+ *         page:
+ *           type: integer
+ *           default: 1
+ *         limit:
+ *           type: integer
+ *           default: 20
+ *
+ *     BulkLoanActionRequest:
+ *       type: object
+ *       required: [loanIds, action]
+ *       properties:
+ *         loanIds:
+ *           type: array
+ *           items:
+ *             type: string
+ *         action:
+ *           type: string
+ *           enum: [approve, reject]
+ *         reason:
+ *           type: string
+ *
+ *     DisburseLoanRequest:
+ *       type: object
+ *       required: [loanId]
+ *       properties:
+ *         loanId:
+ *           type: string
+ *         amount:
+ *           type: number
+ *
+ *     RejectLoanRequest:
+ *       type: object
+ *       required: [reason]
+ *       properties:
+ *         reason:
+ *           type: string
+ *
+ *     BusinessReportQuery:
+ *       type: object
+ *       properties:
+ *         from:
+ *           type: string
+ *           format: date-time
+ *         to:
+ *           type: string
+ *           format: date-time
+ *
+ *     ProfitReportQuery:
+ *       type: object
+ *       properties:
+ *         from:
+ *           type: string
+ *           format: date-time
+ *         to:
+ *           type: string
+ *           format: date-time
+ *         service:
+ *           type: string
+ *
+ *     UpdatePermissionsRequest:
+ *       type: object
+ *       required: [permissions]
+ *       properties:
+ *         permissions:
+ *           type: array
+ *           items:
+ *             type: string
+ */
 
 const router = express.Router();
 
-// Admin Authentication & Management
+/* =============================
+   ADMIN MANAGEMENT
+   ============================= */
+
 /**
  * @swagger
- * /api/admin/create:
+ * /backoffice/create:
  *   post:
  *     tags: [Admin]
  *     summary: Create admin account (Super Admin only)
  *     security:
  *       - bearerAuth: []
  *     requestBody:
+ *       description: Create a new administration account
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/CreateAdminRequest'
+ *     responses:
+ *       201:
+ *         description: Admin created successfully
+ */
+router.post(
+  "/create",
+  verifyJwtRest(),
+  validateReqBody(createAdminAccountSchema),
+  AdminController.createAdminAccount as any
+);
+
+/**
+ * @swagger
+ * /backoffice/login:
+ *   post:
+ *     summary: User login
+ *     tags: [Users]
+ *     requestBody:
  *       required: true
  *       content:
  *         application/json:
  *           schema:
  *             type: object
- *             required: [email, name, surname, password, phone]
+ *             required: [email, password]
  *             properties:
  *               email:
  *                 type: string
- *                 format: email
- *               name:
- *                 type: string
- *               surname:
- *                 type: string
  *               password:
  *                 type: string
- *                 minLength: 6
- *               phone:
- *                 type: string
- *               is_super_admin:
- *                 type: boolean
- *                 default: false
  *     responses:
- *       201:
- *         description: Admin created successfully
+ *       200:
+ *         description: Login successful (returns accessToken and refreshToken)
  */
-router.post('/create', 
-  verifyJwtRest(),
-  validateReqBody(createAdminAccountSchema),
-  async (req: any, res, next) => {
-    try {
-      if (!req.admin?.is_super_admin) {
-        return res.status(403).json({
-          status: 'error',
-          message: 'Only super admins can create admin accounts'
-        });
-      }
-
-      const adminService = new AdminService();
-      const admin = await adminService.createAdminAccount(req.body);
-
-      res.status(201).json({
-        status: 'success',
-        data: admin
-      });
-    } catch (error) {
-      next(error);
-    }
-  }
-);
+router.post("/login", validateReqBody(loginSchema), AdminController.login as any);
 
 /**
  * @swagger
- * /api/admin/activate:
- *   post:
- *     tags: [Admin]
- *     summary: Activate/Deactivate admin account
+ * /backoffice/profile:
+ *   get:
+ *     summary: Get logged-in user profile
+ *     tags: [Users]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: User profile
+ */
+router.get("/profile", verifyJwtRest(), AdminController.profile as any);
+
+/**
+ * @swagger
+ * /backoffice/update:
+ *   put:
+ *     summary: Update user fields (phone, address, first_name, surname, profile_photo)
+ *     tags: [Users]
  *     security:
  *       - bearerAuth: []
  *     requestBody:
@@ -94,49 +244,217 @@ router.post('/create',
  *         application/json:
  *           schema:
  *             type: object
- *             required: [adminId, status]
+ *             required: [field, value]
  *             properties:
- *               adminId:
+ *               field:
  *                 type: string
- *               status:
+ *                 example: user_metadata.phone
+ *               value:
  *                 type: string
- *                 enum: [active, inactive]
+ *     responses:
+ *       200:
+ *         description: User updated successfully
+ */
+router.put(
+  "/update",
+  verifyJwtRest(),
+  validateReqBody(updateUserSchema),
+  AdminController.update as any
+);
+
+/**
+ * @swagger
+ * /backoffice/change-password:
+ *   post:
+ *     summary: Change password for logged-in user
+ *     tags: [Users]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [oldPassword, newPassword]
+ *             properties:
+ *               oldPassword:
+ *                 type: string
+ *               newPassword:
+ *                 type: string
+ *                 minLength: 8
+ *     responses:
+ *       200:
+ *         description: Password changed successfully
+ */
+router.post(
+  "/change-password",
+  verifyJwtRest(),
+  validateReqBody(changePasswordSchema),
+  AdminController.changePassword as any
+);
+
+/**
+ * @swagger
+ * /backoffice/reset/initiate:
+ *   post:
+ *     summary: Initiate password or pin reset (sends OTP)
+ *     tags: [Users]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [email, type]
+ *             properties:
+ *               email:
+ *                 type: string
+ *               type:
+ *                 type: string
+ *                 enum: [password, pin]
+ *     responses:
+ *       200:
+ *         description: Reset OTP sent
+ */
+router.post("/reset/initiate", validateReqBody(initiateResetSchema), AdminController.initiateReset as any);
+
+/**
+ * @swagger
+ * /backoffice/reset/validate:
+ *   post:
+ *     summary: Validate reset OTP
+ *     tags: [Users]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [email, pin]
+ *             properties:
+ *               email:
+ *                 type: string
+ *               pin:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: OTP validated successfully
+ */
+router.post("/reset/validate", validateReqBody(validateResetSchema), AdminController.validateReset as any);
+
+/**
+ * @swagger
+ * /backoffice/update-password-pin:
+ *   post:
+ *     summary: Update password or pin after OTP validation
+ *     tags: [Users]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [email]
+ *             properties:
+ *               email:
+ *                 type: string
+ *               newPassword:
+ *                 type: string
+ *               newPin:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Password/PIN updated successfully
+ */
+router.post("/update-password-pin", validateReqBody(updatePasswordOrPinSchema), AdminController.updatePasswordOrPin as any);
+
+/**
+ * @swagger
+ * /backoffice/{adminId}:
+ *   get:
+ *     tags: [Admin]
+ *     summary: Get admin by ID
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: adminId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Admin returned
+ */
+router.get("/:adminId", verifyJwtRest(), AdminController.getAdmin as any);
+
+/**
+ * @swagger
+ * /backoffice/activate:
+ *   post:
+ *     tags: [Admin]
+ *     summary: Activate/Deactivate admin account (Super Admin only)
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/ActivateRequest'
  *     responses:
  *       200:
  *         description: Admin status updated
  */
-router.post('/activate', 
+router.post(
+  "/activate",
   verifyJwtRest(),
   validateReqBody(activateAdminReqBodySchema),
-  async (req: any, res, next) => {
-    try {
-      if (!req.admin?.is_super_admin) {
-        return res.status(403).json({
-          status: 'error',
-          message: 'Only super admins can manage admin accounts'
-        });
-      }
-
-      const adminService = new AdminService();
-      const admin = await adminService.ActivateAndDeactivateAdmin(req.body);
-
-      res.status(200).json({
-        status: 'success',
-        data: admin
-      });
-    } catch (error) {
-      next(error);
-    }
-  }
+  AdminController.activateAndDeactivateAdmin as any
 );
 
-// User Management
 /**
  * @swagger
- * /api/admin/users:
+ * /backoffice/{adminId}/permissions:
+ *   put:
+ *     tags: [Admin]
+ *     summary: Update admin permissions (Super Admin only)
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: adminId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/UpdatePermissionsRequest'
+ *     responses:
+ *       200:
+ *         description: Permissions updated
+ */
+router.put(
+  "/:adminId/permissions",
+  verifyJwtRest(),
+  validateReqBody(updateAdminPermissionsSchema),
+  AdminController.updateAdminPermissions as any
+);
+
+/* =============================
+   USER MANAGEMENT
+   ============================= */
+
+/**
+ * @swagger
+ * /backoffice/users:
  *   get:
  *     tags: [Admin - Users]
- *     summary: Get all users (paginated)
+ *     summary: Get all users (paginated, optional filter)
  *     security:
  *       - bearerAuth: []
  *     parameters:
@@ -155,79 +473,25 @@ router.post('/activate',
  *         schema:
  *           type: string
  *           enum: [active, inactive]
- *     responses:
- *       200:
- *         description: Users retrieved successfully
- */
-router.get('/users', 
-  verifyJwtRest(),
-  async (req: any, res, next) => {
-    try {
-      checkPermission(req.admin, 'view_users');
-
-      const page = parseInt(req.query.page) || 1;
-      const limit = parseInt(req.query.limit) || 20;
-      const status = req.query.status;
-
-      const filter: any = {};
-      if (status) filter.status = status;
-
-      const skip = (page - 1) * limit;
-      const users = await UserService.find(filter, 'many');
-      
-      res.status(200).json({
-        status: 'success',
-        data: {
-          users: Array.isArray(users) ? users.slice(skip, skip + limit) : [],
-          page,
-          limit
-        }
-      });
-    } catch (error) {
-      next(error);
-    }
-  }
-);
-
-/**
- * @swagger
- * /api/admin/users/{userId}:
- *   get:
- *     tags: [Admin - Users]
- *     summary: Get user details
- *     security:
- *       - bearerAuth: []
- *     parameters:
- *       - in: path
- *         name: userId
- *         required: true
+ *       - in: query
+ *         name: filter
  *         schema:
  *           type: string
+ *           description: simple text filter (email / name)
  *     responses:
  *       200:
- *         description: User details retrieved
+ *         description: Users list
  */
-router.get('/users/:userId', 
+router.get(
+  "/users",
   verifyJwtRest(),
-  async (req: any, res, next) => {
-    try {
-      checkPermission(req.admin, 'view_users');
-
-      const user = await UserService.getUser(req.params.userId);
-      
-      res.status(200).json({
-        status: 'success',
-        data: user
-      });
-    } catch (error) {
-      next(error);
-    }
-  }
+  validateReqQuery(getUsersQuerySchema),
+  AdminController.getUsers as any
 );
 
 /**
  * @swagger
- * /api/admin/users/activate:
+ * /backoffice/users/activate:
  *   post:
  *     tags: [Admin - Users]
  *     summary: Activate/Deactivate user account
@@ -238,45 +502,28 @@ router.get('/users/:userId',
  *       content:
  *         application/json:
  *           schema:
- *             type: object
- *             required: [userId, status]
- *             properties:
- *               userId:
- *                 type: string
- *               status:
- *                 type: string
- *                 enum: [active, inactive]
+ *             $ref: '#/components/schemas/ActivateUserRequest'
  *     responses:
  *       200:
  *         description: User status updated
  */
-router.post('/users/activate', 
+router.post(
+  "/users/activate",
   verifyJwtRest(),
   validateReqBody(activateUserReqBodySchema),
-  async (req: any, res, next) => {
-    try {
-      checkPermission(req.admin, 'manage_users');
-
-      const adminService = new AdminService();
-      const user = await adminService.ActivateAndDeactivateUser(req.body);
-
-      res.status(200).json({
-        status: 'success',
-        data: user
-      });
-    } catch (error) {
-      next(error);
-    }
-  }
+  AdminController.activateAndDeactivateUser as any
 );
 
-// Loan Management
+/* =============================
+   LOAN MANAGEMENT
+   ============================= */
+
 /**
  * @swagger
- * /api/admin/loans:
+ * /backoffice/loans:
  *   get:
  *     tags: [Admin - Loans]
- *     summary: Get all loans with filters
+ *     summary: Get all loans with optional filters
  *     security:
  *       - bearerAuth: []
  *     parameters:
@@ -297,16 +544,16 @@ router.post('/users/activate',
  *           enum: [pending, accepted, rejected]
  *     responses:
  *       200:
- *         description: Loans retrieved successfully
+ *         description: Loans returned
  */
-router.get('/loans', verifyJwtRest(), LoanController.listAllLoans);
+router.get("/loans", verifyJwtRest(), validateReqQuery(loanListQuerySchema), LoanController.listAllLoans as any);
 
 /**
  * @swagger
- * /api/admin/loans/{id}:
+ * /backoffice/loans/{id}:
  *   get:
  *     tags: [Admin - Loans]
- *     summary: Get loan details with history
+ *     summary: Get loan with history
  *     security:
  *       - bearerAuth: []
  *     parameters:
@@ -317,13 +564,13 @@ router.get('/loans', verifyJwtRest(), LoanController.listAllLoans);
  *           type: string
  *     responses:
  *       200:
- *         description: Loan details retrieved
+ *         description: Loan details
  */
-router.get('/loans/:id', verifyJwtRest(), LoanController.singleLoanHistory);
+router.get("/loans/:id", verifyJwtRest(), LoanController.singleLoanHistory as any);
 
 /**
  * @swagger
- * /api/admin/loans/disburse:
+ * /backoffice/loans/disburse:
  *   post:
  *     tags: [Admin - Loans]
  *     summary: Disburse approved loan
@@ -334,27 +581,16 @@ router.get('/loans/:id', verifyJwtRest(), LoanController.singleLoanHistory);
  *       content:
  *         application/json:
  *           schema:
- *             type: object
- *             required: [loanId]
- *             properties:
- *               loanId:
- *                 type: string
- *               amount:
- *                 type: number
- *                 description: Override amount (optional)
+ *             $ref: '#/components/schemas/DisburseLoanRequest'
  *     responses:
  *       200:
- *         description: Loan disbursed successfully
+ *         description: Loan disbursed
  */
-router.post('/loans/disburse', 
-  verifyJwtRest(), 
-  idempotencyMiddleware(),
-  LoanController.disburseLoan
-);
+router.post("/loans/disburse", verifyJwtRest(), idempotencyMiddleware() as any, validateReqBody(disburseLoanSchema), LoanController.disburseLoan as any);
 
 /**
  * @swagger
- * /api/admin/loans/{id}/reject:
+ * /backoffice/loans/{id}/reject:
  *   post:
  *     tags: [Admin - Loans]
  *     summary: Reject loan application
@@ -371,20 +607,16 @@ router.post('/loans/disburse',
  *       content:
  *         application/json:
  *           schema:
- *             type: object
- *             required: [reason]
- *             properties:
- *               reason:
- *                 type: string
+ *             $ref: '#/components/schemas/RejectLoanRequest'
  *     responses:
  *       200:
- *         description: Loan rejected successfully
+ *         description: Loan rejected
  */
-router.post('/loans/:id/reject', verifyJwtRest(), LoanController.rejectLoan);
+router.post("/loans/:id/reject", verifyJwtRest(), validateReqBody(rejectLoanSchema), LoanController.rejectLoan as any);
 
 /**
  * @swagger
- * /api/admin/loans/stats:
+ * /backoffice/loans/stats:
  *   get:
  *     tags: [Admin - Loans]
  *     summary: Get loan portfolio statistics
@@ -392,13 +624,13 @@ router.post('/loans/:id/reject', verifyJwtRest(), LoanController.rejectLoan);
  *       - bearerAuth: []
  *     responses:
  *       200:
- *         description: Loan statistics retrieved
+ *         description: Loan statistics
  */
-router.get('/loans/stats', verifyJwtRest(), LoanController.getAdminLoanStats);
+router.get("/loans/stats", verifyJwtRest(), LoanController.getAdminLoanStats as any);
 
 /**
  * @swagger
- * /api/admin/loans/category/{category}:
+ * /backoffice/loans/category/{category}:
  *   get:
  *     tags: [Admin - Loans]
  *     summary: Get loans by category
@@ -413,17 +645,157 @@ router.get('/loans/stats', verifyJwtRest(), LoanController.getAdminLoanStats);
  *           enum: [active, due, overdue, repaid]
  *     responses:
  *       200:
- *         description: Loans by category retrieved
+ *         description: Loans by category
  */
-router.get('/loans/category/:category', verifyJwtRest(), LoanController.getLoansByCategory);
+router.get("/loans/category/:category", verifyJwtRest(), LoanController.getLoansByCategory as any);
 
-// Savings Management
 /**
  * @swagger
- * /api/admin/savings:
+ * /backoffice/loans/bulk-action:
+ *   post:
+ *     tags: [Admin - Loans]
+ *     summary: Bulk approve/reject loans
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/BulkLoanActionRequest'
+ *     responses:
+ *       200:
+ *         description: Bulk operation result
+ */
+router.post("/loans/bulk-action", verifyJwtRest(), validateReqBody(bulkLoanActionSchema), AdminController.bulkLoanAction as any);
+
+/* =============================
+   SAVINGS MANAGEMENT
+   ============================= */
+
+router.get("/savings", verifyJwtRest(), SavingsController.getPlans as any);
+
+router.get("/savings/stats", verifyJwtRest(), AdminController.getSavingsStats as any);
+
+router.get("/savings/by-category", verifyJwtRest(), validateReqQuery(flaggedQuerySchema), AdminController.getSavingsByCategory as any);
+
+/* =============================
+   DASHBOARD / REPORTS
+   ============================= */
+
+/**
+ * @swagger
+ * /backoffice/dashboard:
  *   get:
- *     tags: [Admin - Savings]
- *     summary: Get all savings plans
+ *     tags: [Admin - Reports]
+ *     summary: Get admin dashboard stats
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Dashboard stats
+ */
+router.get("/dashboard", verifyJwtRest(), AdminController.getDashboardStats as any);
+
+/**
+ * @swagger
+ * /backoffice/system/health:
+ *   get:
+ *     tags: [Admin - Reports]
+ *     summary: Get system health overview
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: System health
+ */
+router.get("/system/health", verifyJwtRest(), AdminController.getSystemHealth as any);
+
+/**
+ * @swagger
+ * /backoffice/business-report:
+ *   get:
+ *     tags: [Admin - Reports]
+ *     summary: Generate business/profit report (from/to query)
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: from
+ *         schema:
+ *           type: string
+ *           format: date-time
+ *       - in: query
+ *         name: to
+ *         schema:
+ *           type: string
+ *           format: date-time
+ *     responses:
+ *       200:
+ *         description: Business report
+ */
+router.get("/business-report", verifyJwtRest(), validateReqQuery(businessReportQuerySchema), AdminController.generateBusinessReport as any);
+
+router.get("/profits", verifyJwtRest(), validateReqQuery(profitReportQuerySchema), AdminController.getProfitReport as any);
+
+/* =============================
+   TRANSACTIONS & RECONCILIATION
+   ============================= */
+
+/**
+ * @swagger
+ * /backoffice/transactions/{traceId}:
+ *   get:
+ *     tags: [Admin - Transactions]
+ *     summary: Get ledger entries & related txns by traceId
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: traceId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Transaction details
+ */
+router.get("/transactions/:traceId", verifyJwtRest(), AdminController.getTransactionDetails as any);
+
+/**
+ * @swagger
+ * /backoffice/transfers/{id}/requery:
+ *   post:
+ *     tags: [Admin - Transactions]
+ *     summary: Re-query a transfer and attempt reconcile (best-effort)
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Requery result
+ */
+router.post("/transfers/:id/requery", verifyJwtRest(), AdminController.requeryTransfer as any);
+
+router.get("/reconciliation/inconsistencies", verifyJwtRest(), AdminController.getReconciliationInconsistencies as any);
+
+router.get("/transactions/flagged", verifyJwtRest(), validateReqQuery(flaggedQuerySchema), AdminController.getFlaggedTransactions as any);
+
+/* =============================
+   ACTIVITY LOGS
+   ============================= */
+
+/**
+ * @swagger
+ * /backoffice/activity-logs:
+ *   get:
+ *     tags: [Admin - Logs]
+ *     summary: Get admin activity logs
  *     security:
  *       - bearerAuth: []
  *     parameters:
@@ -436,17 +808,46 @@ router.get('/loans/category/:category', verifyJwtRest(), LoanController.getLoans
  *         name: limit
  *         schema:
  *           type: integer
- *           default: 20
+ *           default: 50
+ *       - in: query
+ *         name: adminId
+ *         schema:
+ *           type: string
  *     responses:
  *       200:
- *         description: Savings plans retrieved
+ *         description: Activity logs
  */
-router.get('/savings', verifyJwtRest(), SavingsController.getPlans);
+router.get("/activity-logs", verifyJwtRest(), validateReqQuery(activityLogsQuerySchema), AdminController.getAdminActivityLogs as any);
 
-// V2 Admin Endpoints
-router.get('/transactions/:traceId', verifyJwtRest(), AdminController.getTransactionDetails);
-router.post('/transfers/:id/requery', verifyJwtRest(), AdminController.requeryTransfer);
-router.get('/profits', verifyJwtRest(), AdminController.getProfitReport);
-router.get('/reconciliation/inconsistencies', verifyJwtRest(), AdminController.getReconciliationInconsistencies);
+/* ================================
+   ADMIN SETTINGS
+================================ */
+/**
+ * @swagger
+ * /backoffice/settings:
+ *   get:
+ *     tags: [Admin - Settings]
+ *     summary: Get admin settings
+ *     security: [ { bearerAuth: [] } ]
+ */
+router.get(
+  "/settings",
+  verifyJwtRest(),
+  AdminController.getSettings as any
+);
+
+/**
+ * @swagger
+ * /backoffice/settings:
+ *   put:
+ *     tags: [Admin - Settings]
+ *     summary: Update admin settings
+ *     security: [ { bearerAuth: [] } ]
+ */
+router.put(
+  "/settings",
+  verifyJwtRest(),
+  AdminController.updateSettings as any
+);
 
 export default router;

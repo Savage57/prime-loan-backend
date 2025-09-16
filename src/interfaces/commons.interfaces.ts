@@ -4,4 +4,5 @@ import { Request } from 'express';
 export interface ProtectedRequest extends Request {
 	user: User | null;
 	admin: User | null;
+	idempotencyKey?: string;
 }

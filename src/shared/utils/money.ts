@@ -5,25 +5,10 @@
 
 export class Money {
   /**
-   * Convert naira to kobo (minor units)
-   */
-  static toKobo(naira: number): number {
-    return Math.round(naira * 100);
-  }
-
-  /**
-   * Convert kobo to naira
-   */
-  static toNaira(kobo: number): number {
-    return kobo / 100;
-  }
-
-  /**
    * Format kobo as currency string
    */
-  static format(kobo: number): string {
-    const naira = Money.toNaira(kobo);
-    return `₦${naira.toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  static format(amount: number): string {
+    return `₦${amount.toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   }
 
   /**

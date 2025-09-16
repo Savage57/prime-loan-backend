@@ -1,48 +1,66 @@
-import createApp from "./app";
+/**
+ * Main Application Server
+ * - Combines middleware, DB connection, and route setup
+ * - Uses HTTP server wrapper for flexibility (WebSockets, etc.)
+ * - Graceful shutdown and centralized logging
+ */
 import express from "express";
 import http from "http";
-import { connectToDB } from "./utils";
+import pino from "pino";
+import { DatabaseService } from "./shared/db";
 import { PORT } from "./config";
-import { checkLoansAndSendEmails, sendMessageForLoan } from "./jobs/loanReminder";
-import cron from 'node-cron';
+import createApp from "./app";
 
-let lastRun = Date.now();
+const logger = pino({ name: "prime-finance-server" });
 
-cron.schedule('*/9 * * * *', async () => {
-  console.log('Running loan check...');
-  await checkLoansAndSendEmails();
-});
+export async function startApp() {
+  try {
+    const app = express();
 
-cron.schedule('0 * * * *', async () => {
-  const now = Date.now();
-  const hoursSinceLastRun = (now - lastRun) / (1000 * 60 * 60);
+    // Connect to database
+    await DatabaseService.connect();
 
-  if (hoursSinceLastRun >= 23) {
-    console.log('Running send email...');
-    await sendMessageForLoan();
-    lastRun = now; // Update the last run time
+    // Mount all middlewares & routes
+    await createApp(app);
+
+    const server = http.createServer(app);
+
+    server
+      .listen(PORT, (): void => {
+        logger.info("Prime Finance server initiated");
+      })
+      .on("listening", () => {
+        logger.info(`Prime Finance server listening on port ${PORT}`);
+        logger.info("Routes mounted under /api/*");
+      })
+      .on("error", (err: any) => {
+        logger.error({ err }, "Server failed to start");
+        process.exit(1);
+      })
+      .on("close", () => {
+        logger.info("Server closed");
+      });
+
+    // Graceful shutdown
+    process.on("SIGTERM", () => {
+      logger.info("SIGTERM received, shutting down gracefully");
+      server.close(() => {
+        logger.info("Server closed");
+        process.exit(0);
+      });
+    });
+
+    return server;
+  } catch (error: any) {
+    logger.error({ error: error.message }, "Failed to start app");
+    process.exit(1);
   }
-});
+}
 
-const startApp = async () => {
-  const app = express();
-
-  await connectToDB();
-
-  await createApp(app);
-
-  const server = http.createServer(app);
-
-  server.listen(PORT, (): void => {
-    console.log(`initiated User Service`);
-  }).on("listening", () =>
-    console.log(`User Service listening on port ${PORT}`)
-  ).on("error", (err: any) => {
-    console.log(err);
-    process.exit();
-  }).on("close", () => {
-    
+// Start server if run directly
+if (require.main === module) {
+  startApp().catch((err) => {
+    logger.error({ err }, "Unhandled error while starting app");
+    process.exit(1);
   });
-};
-
-startApp();
+}

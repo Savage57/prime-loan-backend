@@ -1,11 +1,12 @@
 /**
  * Savings Controller - V2 savings endpoints
- * Handles savings plan creation and withdrawals
+ * Handles savings plan creation, withdrawals, and admin analytics
  */
 import { Response, NextFunction } from 'express';
 import { ProtectedRequest } from '../../interfaces';
 import { SavingsService } from './savings.service';
 import { SettingsService } from '../admin/settings.service';
+import { checkPermission } from '../../shared/utils/checkPermission';
 
 export class SavingsController {
   /**
@@ -28,8 +29,8 @@ export class SavingsController {
 
       const setting = await SettingsService.getSettings();
 
-      if(!setting.savingsEnabled) {
-        res.status(400).json({
+      if (!setting.savingsEnabled) {
+        return res.status(400).json({
           status: 'failed',
           message: "Savings is currently in-active, try again later."
         });
@@ -68,8 +69,8 @@ export class SavingsController {
 
       const setting = await SettingsService.getSettings();
 
-      if(!setting.savingsEnabled) {
-        res.status(400).json({
+      if (!setting.savingsEnabled) {
+        return res.status(400).json({
           status: 'failed',
           message: "Savings is currently in-active, try again later."
         });
@@ -111,14 +112,13 @@ export class SavingsController {
     }
   }
 
-    /**
+  /**
    * Get all users savings plans for the logged-in admin
    */
   static async getPlans(req: ProtectedRequest, res: Response, next: NextFunction) {
     try {
       const admin = req.admin;
-
-      //TODO: Check if admin is super admin, give access, else check if admin has the permission.
+      checkPermission(admin!, 'view_savings');
 
       const page = Number(req.query.page) || 1;
       const limit = Number(req.query.limit) || 20;
@@ -128,6 +128,48 @@ export class SavingsController {
       res.status(200).json({
         status: 'success',
         data: plans
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * Admin: Get portfolio savings statistics
+   */
+  static async getAdminStats(req: ProtectedRequest, res: Response, next: NextFunction) {
+    try {
+      const admin = req.admin;
+      checkPermission(admin!, 'view_savings');
+
+      const stats = await SavingsService.getAdminSavingsStats();
+
+      res.status(200).json({
+        status: 'success',
+        data: stats
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * Admin: Get savings plans by category (active, matured, withdrawn)
+   */
+  static async getSavingsByCategory(req: ProtectedRequest, res: Response, next: NextFunction) {
+    try {
+      const admin = req.admin;
+      checkPermission(admin!, 'view_savings');
+
+      const category = String(req.query.category || 'active') as 'active' | 'matured' | 'withdrawn';
+      const page = Number(req.query.page) || 1;
+      const limit = Number(req.query.limit) || 20;
+
+      const result = await SavingsService.getSavingsByCategory(category, page, limit);
+
+      res.status(200).json({
+        status: 'success',
+        data: result
       });
     } catch (error) {
       next(error);

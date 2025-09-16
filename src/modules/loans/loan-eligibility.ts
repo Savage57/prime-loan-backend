@@ -3,7 +3,7 @@
  * Determines loan eligibility based on ladder, credit score, and business rules
  */
 import { ILoanLadder, LoanLadder } from './loan-ladder.model';
-import { User } from '../../interfaces';
+import { User } from '../users/user.interface';
 import Loan from './loan.model';
 import { SettingsService } from "../admin/settings.service";
 

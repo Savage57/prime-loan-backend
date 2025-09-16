@@ -1,12 +1,15 @@
 /**
- * Loan Penalties Cron Worker
- * Applies daily penalties to overdue loans
+ * Loan Penalties & Reminder Cron Worker
+ * - Applies daily penalties to overdue loans
+ * - Sends reminders for loans due today and tomorrow
  */
 import { QueueService } from '../../shared/queue';
 import Loan from '../../modules/loans/loan.model';
 import { LedgerService } from '../../modules/ledger/LedgerService';
 import { DatabaseService } from '../../shared/db';
 import { UuidService } from '../../shared/utils/uuid';
+import { NotificationService } from '../../modules/notifications/notification.service';
+import { UserService } from '../../modules/users/user.service';
 import pino from 'pino';
 
 const logger = pino({ name: 'loan-penalties-cron' });
@@ -18,17 +21,17 @@ export class LoanPenaltiesCron {
     // Run daily at midnight
     const worker = QueueService.createWorker(
       'loan-penalties',
-      async (job) => {
-        await this.applyDailyPenalties();
+      async () => {
+        await this.processLoans();
       },
       {
-        repeat: { pattern: '0 0 * * *' }, // Daily at midnight
+        repeat: { pattern: '0 0 * * *' }, // Every midnight
         removeOnComplete: 5,
         removeOnFail: 10
       }
     );
 
-    logger.info('Loan penalties cron started');
+    logger.info('Loan penalties & reminder cron started');
 
     process.on('SIGTERM', async () => {
       await worker.close();
@@ -36,31 +39,48 @@ export class LoanPenaltiesCron {
     });
   }
 
-  private static async applyDailyPenalties() {
+  private static async processLoans() {
     const penaltyRate = parseFloat(process.env.LOAN_PENALTY_PCT_PER_DAY || '1') / 100;
 
+    const today = new Date();
+    const todayISO = today.toISOString().split('T')[0];
+    const tomorrow = new Date(today);
+    tomorrow.setDate(today.getDate() + 1);
+    const tomorrowISO = tomorrow.toISOString().split('T')[0];
+
     try {
-      // Find overdue loans
-      const overdueLoans = await Loan.find({
+      // Pull all active loans with outstanding balances
+      const loans = await Loan.find({
         status: 'accepted',
-        outstanding: { $gt: 0 },
-        repayment_date: { $lt: new Date() }
+        outstanding: { $gt: 0 }
       });
 
-      logger.info(`Processing penalties for ${overdueLoans.length} overdue loans`);
+      logger.info(`Processing ${loans.length} loans for penalties & reminders`);
 
-      for (const loan of overdueLoans) {
+      for (const loan of loans) {
         try {
-          await this.applyPenaltyToLoan(loan, penaltyRate);
-        } catch (error: any) {
-          logger.error({ 
-            loanId: loan._id, 
-            error: error.message 
-          }, 'Error applying penalty to loan');
+          const repaymentDateISO = new Date(loan.repayment_date).toISOString().split('T')[0];
+          const user = await UserService.getUser(loan.userId);
+
+          if (!user || Array.isArray(user)) continue;
+
+          if (repaymentDateISO < todayISO) {
+            // OVERDUE
+            await this.applyPenaltyToLoan(loan, penaltyRate);
+            await NotificationService.sendLoanOverdue(user, loan);
+          } else if (repaymentDateISO === todayISO) {
+            // DUE TODAY
+            await NotificationService.sendLoanDueToday(user, loan);
+          } else if (repaymentDateISO === tomorrowISO) {
+            // DUE TOMORROW
+            await NotificationService.sendLoanDueTomorrow(user, loan);
+          }
+        } catch (err: any) {
+          logger.error({ loanId: loan._id, error: err.message }, 'Error processing loan');
         }
       }
-    } catch (error: any) {
-      logger.error({ error: error.message }, 'Error in loan penalties cron');
+    } catch (err: any) {
+      logger.error({ error: err.message }, 'Error in loan penalties cron');
     }
   }
 
@@ -72,15 +92,13 @@ export class LoanPenaltiesCron {
         const today = new Date().toISOString().split('T')[0];
         const lastPenaltyDate = loan.lastInterestAdded?.split('T')[0];
 
-        // Skip if penalty already applied today
-        if (lastPenaltyDate === today) {
-          return;
-        }
+        // Avoid duplicate penalty within the same day
+        if (lastPenaltyDate === today) return;
 
-        const penaltyAmount = Math.floor(loan.amount * penaltyRate * 100); // Convert to kobo
+        const penaltyAmount = Math.floor(loan.amount * penaltyRate * 100); // in kobo
         const traceId = UuidService.generateTraceId();
 
-        // Create penalty ledger entries
+        // Ledger entry for penalty
         await LedgerService.createDoubleEntry(
           traceId,
           `user_wallet:${loan.userId}`,
@@ -99,7 +117,7 @@ export class LoanPenaltiesCron {
           }
         );
 
-        // Update loan with penalty
+        // Update loan
         loan.outstanding = Number(loan.outstanding) + penaltyAmount;
         loan.lastInterestAdded = new Date().toISOString();
         loan.repayment_history = [
@@ -114,7 +132,7 @@ export class LoanPenaltiesCron {
 
         await loan.save({ session });
 
-        logger.info({ 
+        logger.info({
           loanId: loan._id,
           userId: loan.userId,
           penaltyAmount,
@@ -127,7 +145,7 @@ export class LoanPenaltiesCron {
   }
 }
 
-// Start the worker if this file is run directly
+// Run if executed directly
 if (require.main === module) {
   LoanPenaltiesCron.start().catch(console.error);
 }

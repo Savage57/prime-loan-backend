@@ -1,3 +1,5 @@
+import { Document } from "mongoose";
+
 export type LOANCATEGORY = "personal" | "working";
 export type LOANTYPE = "request" | "repay";
 export type LOANSTATUS = "pending" | "rejected" | "accepted";
@@ -45,7 +47,7 @@ export interface ICreditScore {
   loan_details: LoanDetails[];
 };
 
-export interface ILoan {
+export interface ILoan extends Document {
   _id: string;
   first_name: string;
   last_name: string;

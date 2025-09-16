@@ -342,7 +342,7 @@ export class TransferService {
   /**
    * Handle incoming wallet credit alerts (webhook style)
    */
-  async walletAlerts(body: {
+  static async walletAlerts(body: {
     account_number: string;
     amount: number;
     originator_account_name: string;

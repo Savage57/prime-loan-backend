@@ -9,8 +9,8 @@ export class RedisService {
 
   static getInstance(): Redis {
     if (!this.instance) {
-      this.instance = new Redis(process.env.REDIS_URL || 'redis://localhost:6379', {
-        retryDelayOnFailover: 100,
+      this.instance = new Redis(Number(process.env.REDIS_PORT) || 6379, process.env.REDIS_HOST || 'redis://localhost', {
+        maxLoadingRetryTime: 100,
         maxRetriesPerRequest: 3,
         lazyConnect: true
       });

@@ -2,17 +2,19 @@ import nodemailer from "nodemailer";
 import { User } from "../users/user.interface";
 
 const transporter = nodemailer.createTransport({
-  service: "gmail",
+  host: process.env.EMAIL_HOST,             // smtp.mailgun.org
+  port: Number(process.env.EMAIL_PORT_NUMBER) || 587,
+  secure: false,                            // Mailgun uses STARTTLS on port 587
   auth: {
-    user: process.env.SMTP_USER || "primefinancials68@gmail.com",
-    pass: process.env.SMTP_PASS || "your_app_password",
+    user: process.env.EMAIL_USERNAME,       // postmaster@primefinance.live
+    pass: process.env.EMAIL_PASSWORD,       // Mailgun SMTP password
   },
 });
 
 export class NotificationService {
   private static async sendEmail(to: string, subject: string, html: string) {
     await transporter.sendMail({
-      from: `"Prime Finance" <${process.env.SMTP_USER}>`,
+      from: `${process.env.EMAIL_USERNAME}`,
       to,
       subject,
       html,
@@ -37,6 +39,56 @@ export class NotificationService {
     `;
   }
 
+  /* ----------- Loan Reminder Helper ----------- */
+  private static async sendLoanReminder(
+    user: User,
+    loan: any,
+    subject: string,
+    message: string
+  ) {
+    const body = `
+      <p>Dear <strong>${user.user_metadata.first_name}</strong>,</p>
+      <p>${message}</p>
+      <p><strong>Outstanding:</strong> ₦${loan.outstanding}</p>
+      <p><strong>Repayment Date:</strong> ${loan.repayment_date}</p>
+      <p style="color:#d97706; font-weight:bold;">
+        Please make the payment immediately to avoid further late fees and penalties.
+      </p>
+    `;
+    return this.sendEmail(
+      user.email,
+      subject,
+      this.template("Loan Reminder", body)
+    );
+  }
+
+  static async sendLoanOverdue(user: User, loan: any) {
+    return this.sendLoanReminder(
+      user,
+      loan,
+      "Your Loan is Overdue",
+      `Your loan payment of ₦${loan.outstanding} was due on ${loan.repayment_date}.`
+    );
+  }
+
+  static async sendLoanDueToday(user: User, loan: any) {
+    return this.sendLoanReminder(
+      user,
+      loan,
+      "Your Loan is Due Today",
+      `Your loan payment of ₦${loan.outstanding} is due <strong>today</strong>.`
+    );
+  }
+
+  static async sendLoanDueTomorrow(user: User, loan: any) {
+    return this.sendLoanReminder(
+      user,
+      loan,
+      "Your Loan Will Be Due Tomorrow",
+      `Your loan payment of ₦${loan.outstanding} will be due <strong>tomorrow</strong>.`
+    );
+  }
+
   /* ----------- Loan Emails ----------- */
 
   static async sendLoanApplicationUser(user: User, loan: any) {
@@ -46,7 +98,11 @@ export class NotificationService {
       <p>We will review it and notify you shortly.</p>
       <p style="color:#0d6efd; font-weight:bold;">Thank you for choosing Prime Finance.</p>
     `;
-    return this.sendEmail(user.email, "Loan Application Received", this.template("Loan Application", body));
+    return this.sendEmail(
+      user.email,
+      "Loan Application Received",
+      this.template("Loan Application", body)
+    );
   }
 
   static async sendWelcomeEmail(to: string, firstName: string) {
@@ -61,9 +117,6 @@ export class NotificationService {
     return this.sendEmail(to, "Welcome to Prime Finance", html);
   }
 
-  /**
-   * User: Login Alert
-   */
   static async sendLoginAlert(to: string, firstName: string) {
     const html = `
       <div style="font-family: Arial, sans-serif; padding:20px;">
@@ -76,9 +129,6 @@ export class NotificationService {
     return this.sendEmail(to, "Login Alert – Prime Finance", html);
   }
 
-  /**
-   * User: OTP / Reset Email
-   */
   static async sendOtpEmail(to: string, firstName: string, pin: number) {
     const html = `
       <div style="font-family: Arial, sans-serif; padding:20px;">
@@ -97,7 +147,13 @@ export class NotificationService {
     return this.sendEmail(to, "Reset Your Password – OTP Code", html);
   }
 
-  static async sendLoanApplicationAdmin(user: User, title: string, content: string, admins: string, loan: any) {
+  static async sendLoanApplicationAdmin(
+    user: User,
+    title: string,
+    content: string,
+    admins: string,
+    loan: any
+  ) {
     const body = `
       <p>${content}</p>
       <p><strong>User:</strong> ${user.user_metadata.first_name} ${user.user_metadata.surname}</p>
@@ -122,7 +178,11 @@ export class NotificationService {
       <p style="color:green; font-weight:bold;">Use your funds wisely and repay on time to grow your loan limit, and get funded higher loan amounts.</p>
     `;
 
-    return this.sendEmail(user.email, "Loan Approved & Disbursed", this.template("Loan Approved", body));
+    return this.sendEmail(
+      user.email,
+      "Loan Approved & Disbursed",
+      this.template("Loan Approved", body)
+    );
   }
 
   static async sendLoanRepayment(user: any, repayAmount: number, message: string) {
@@ -132,7 +192,11 @@ export class NotificationService {
       <p>${message}</p>
       <p>Thank you for your commitment!</p>
     `;
-    return this.sendEmail(user.email, "Loan Repayment Successful", this.template("Repayment Confirmation", body));
+    return this.sendEmail(
+      user.email,
+      "Loan Repayment Successful",
+      this.template("Repayment Confirmation", body)
+    );
   }
 
   static async sendLoanRejection(user: any, amount: number, reason: string) {
@@ -142,7 +206,11 @@ export class NotificationService {
       <p><strong>Reason:</strong> ${reason}</p>
       <p style="color:red; font-weight:bold;">Please work on improving your eligibility for future requests.</p>
     `;
-    return this.sendEmail(user.email, "Loan Request Rejected", this.template("Loan Rejected", body));
+    return this.sendEmail(
+      user.email,
+      "Loan Request Rejected",
+      this.template("Loan Rejected", body)
+    );
   }
 
   static async sendDebitAlert(user: User, amount: number) {
@@ -152,10 +220,19 @@ export class NotificationService {
       <p>Kindly visit your dashboard to view transaction details.</p>
       <p style="color:#0d6efd; font-weight:bold;">Thank you for choosing Prime Finance.</p>
     `;
-    return this.sendEmail(user.email, "Your Transfer Has Been Completed", this.template("Transfer Completed", body));
+    return this.sendEmail(
+      user.email,
+      "Your Transfer Has Been Completed",
+      this.template("Transfer Completed", body)
+    );
   }
 
-  static async sendCreditAlert(user: User, amount: number, originator_account_name: string, reference: string) {
+  static async sendCreditAlert(
+    user: User,
+    amount: number,
+    originator_account_name: string,
+    reference: string
+  ) {
     const body = `
       <p>Hi <strong>${user.user_metadata.first_name}</strong>,</p>
       <p>Your wallet has been credited with ₦${amount} from ${originator_account_name}.</p>
@@ -163,6 +240,10 @@ export class NotificationService {
       <p>Kindly visit your dashboard to view transaction details.</p>
       <p style="color:#0d6efd; font-weight:bold;">Thank you for choosing Prime Finance.</p>
     `;
-    return this.sendEmail(user.email, "Wallet Alert – Funds Credited", this.template("Wallet Credited", body));
+    return this.sendEmail(
+      user.email,
+      "Wallet Alert – Funds Credited",
+      this.template("Wallet Credited", body)
+    );
   }
 }

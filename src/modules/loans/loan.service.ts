@@ -8,7 +8,6 @@
 import axios, { AxiosRequestConfig } from "axios";
 import { DatabaseService } from "../../shared/db";
 import { UuidService } from "../../shared/utils/uuid";
-import { Money } from "../../shared/utils/money";
 import { saveIdempotentResponse } from "../../shared/idempotency/middleware";
 import { LedgerService } from "../ledger/LedgerService";
 import { TransferRequest, VfdProvider } from "../../shared/providers/vfd.provider";

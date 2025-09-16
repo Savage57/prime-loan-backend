@@ -10,6 +10,7 @@ export interface ISettings extends Document {
   savingsEnabled: boolean;
   billPaymentEnabled: boolean;
   savingsPenalty: Number;
+  savingsInterestRate: Number; // e.g., 0.025 = 2.5%
   updatedBy: string; // adminId
   updatedAt: Date;
 }
@@ -24,6 +25,7 @@ const SettingsSchema = new Schema<ISettings>(
     loanEnabled: { type: Boolean, default: true },
     savingsPenalty: { type: Number, default: 0.15 },
     savingsEnabled: { type: Boolean, default: true },
+    savingsInterestRate: { type: Number, default: 0.025 }, // 2.5% default
     billPaymentEnabled: { type: Boolean, default: true },
     updatedBy: { type: String, required: true },
     updatedAt: { type: Date, default: Date.now }

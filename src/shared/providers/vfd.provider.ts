@@ -4,7 +4,7 @@
  */
 import axios, { AxiosRequestConfig } from "axios";
 import { CircuitBreaker } from "../utils/circuit";
-import { generateBearerToken } from "../../utils/generateBearerToken";
+import { generateBearerToken } from "../utils/generateBearerToken";
 import { customerKey, customerSecret, baseUrl } from "../../config";
 
 /* ---------- TYPES ---------- */

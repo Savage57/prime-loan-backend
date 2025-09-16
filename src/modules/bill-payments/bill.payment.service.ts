@@ -9,7 +9,6 @@ import User from '../users/user.model';
 import { sha512 } from 'js-sha512';
 import { InitiateBillPaymentRequest, ServiceType } from './bill-payment.interface';
 
-
 function requireExtra<T>(
   value: T | undefined,
   name: string,

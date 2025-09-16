@@ -108,7 +108,7 @@ export async function processTransaction({
       billPayment.status = "FAILED";
       await billPayment.save({ session });
       return { traceId, status: "FAILED" as "FAILED" | "COMPLETED", billPayment, message: providerResp.message };
-    });
+    }) as any;
   } finally {
     await session.endSession();
   }
