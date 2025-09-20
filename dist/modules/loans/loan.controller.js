@@ -306,12 +306,13 @@ class LoanController {
                 const admin = req.admin;
                 const page = Number(req.query.page) || 1;
                 const limit = Number(req.query.limit) || 20;
-                const category = String(req.params.category);
+                const category = req.query.category;
+                const search = req.query.search;
                 (0, checkPermission_1.checkPermission)(admin, "view_loans");
-                const { loans } = yield loan_service_1.LoanService.getLoansByCategory(category, page, limit);
+                const data = yield loan_service_1.LoanService.getLoansByCategory(category, page, limit, search);
                 res.status(200).json({
                     status: "success",
-                    data: loans,
+                    data
                 });
             }
             catch (error) {

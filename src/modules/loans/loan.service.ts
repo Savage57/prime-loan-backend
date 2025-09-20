@@ -659,7 +659,7 @@ export class LoanService {
   static async listAllLoans(page = 1, limit = 20, filter: any = {}) {
     const skip = (page - 1) * limit;
     const [data, total] = await Promise.all([
-      Loan.find(filter).skip(skip).limit(limit).sort({ createdAt: -1 }),
+      Loan.find({}).skip(skip).limit(limit).sort({ createdAt: -1 }),
       Loan.countDocuments(filter)
     ]);
     return { data, total, page, pages: Math.max(1, Math.ceil(total / limit)) };
@@ -667,78 +667,133 @@ export class LoanService {
 
   /**
    * Admin loan portfolio analytics
-   */
+  */
   static async getAdminLoanStats() {
     const now = new Date();
 
-    // Load all loans (we need amounts + repayment status)
+    // Load only required fields
     const loans = await Loan.find({}, {
       amount: 1,
       repayment_amount: 1,
       outstanding: 1,
       loan_payment_status: 1,
       repayment_date: 1,
-      status: 1
+      status: 1,
+      repayment_history: 1
     });
 
-    let totalApplied = 0;
-    let totalDisbursed = 0;
-    let realizedProfit = 0;
-    let unrealizedProfit = 0;
-    let activeLoans = 0;
-    let dueLoans = 0;
-    let overdueLoans = 0;
-    let repaidLoans = 0;
+    let stats = {
+      totalApplied: 0,
+      appliedUsers: 0,
+      totalDisbursed: 0,
+      disbursedUsers: 0,
+      realizedProfit: 0,
+      unrealizedProfit: 0,
+      activeLoans: 0,
+      activeAmount: 0,
+      dueLoans: 0,
+      dueAmount: 0,
+      pendingLoans: 0,
+      pendingAmount: 0,
+      overdueLoans: 0,
+      overdueAmount: 0,
+      repaidLoans: 0,
+      repaidAmount: 0,
+      repaidingLoans: 0,
+      repaidingAmount: 0,
+      notStarted: 0,
+    };
 
     for (const loan of loans) {
-      totalApplied += loan.amount || 0;
+      const amount = loan.amount || 0;
+      const repayment = loan.repayment_amount || 0;
+      const outstanding = loan.outstanding || 0;
+      const dueDate = loan.repayment_date ? new Date(loan.repayment_date) : null;
 
-      if (loan.status === "accepted" || loan.loan_payment_status === "in-progress" || loan.loan_payment_status === "complete") {
-        totalDisbursed += loan.amount || 0;
+      // Applied loans
+      stats.totalApplied += amount;
+      stats.appliedUsers++;
 
-        // Profit = repayment - principal
-        const expectedProfit = (loan.repayment_amount || 0) - (loan.amount || 0);
-        const realized = (loan.repayment_amount || 0) - (loan.outstanding || 0) - (loan.amount || 0);
+      // Disbursed loans
+      if (
+        loan.status == "accepted"
+      ) {
+        stats.totalDisbursed += amount;
+        stats.disbursedUsers++;
 
-        realizedProfit += Math.max(realized, 0);
-        unrealizedProfit += Math.max(expectedProfit - realized, 0);
+        const expectedProfit = (repayment || 0) - (amount || 0);
+        const realized = (repayment || 0) - (outstanding || 0) - (amount || 0);
+
+        stats.realizedProfit += Math.max(realized, 0);
+        stats.unrealizedProfit += Math.max(expectedProfit - realized, 0);
       }
 
-      if (loan.loan_payment_status === "in-progress") {
-        activeLoans++;
-        if (loan.repayment_date) {
-          const dueDate = new Date(loan.repayment_date);
-          if (dueDate <= now) {
-            dueLoans++;
-            if (dueDate < now) overdueLoans++;
+      // Loan status categorization
+      if (
+        loan.status == "accepted" &&
+        (loan.loan_payment_status == "in-progress" ||
+        loan.loan_payment_status == "not-started")
+      ) {
+        if (dueDate) {
+          if (dueDate > now) {
+            stats.activeLoans++;
+            stats.activeAmount += outstanding;
+          } else if (dueDate.toDateString() === now.toDateString()) {
+            stats.dueLoans++;
+            stats.dueAmount += outstanding;
+          } else {
+            stats.overdueLoans++;
+            stats.overdueAmount += outstanding;
           }
         }
       }
 
-      if (loan.loan_payment_status === "complete") {
-        repaidLoans++;
+      if (loan.loan_payment_status == "complete") {
+        stats.repaidLoans++;
+        let sum = 0;
+
+        for (let payment of loan?.repayment_history || []) {
+          sum += isNaN(Number(payment.amount)) ? 0 : Number(payment.amount);
+        }
+
+        stats.repaidAmount += sum;
+      }
+
+      if (loan.loan_payment_status == "in-progress") {
+        stats.repaidingLoans++;
+        let sum = 0;
+
+        for (let payment of loan?.repayment_history || []) {
+          sum += isNaN(Number(payment.amount)) ? 0 : Number(payment.amount);
+        }
+
+        stats.repaidingAmount += sum;
+      }
+
+      if(loan.status == "accepted" && loan.loan_payment_status == "not-started") {
+        stats.notStarted++;
+      }
+
+      if (loan.status === "pending") {
+        stats.pendingLoans++;
+        stats.pendingAmount += amount;
       }
     }
 
     return {
       totalLoans: loans.length,
-      totalApplied,
-      totalDisbursed,
-      realizedProfit,
-      unrealizedProfit,
-      activeLoans,
-      dueLoans,
-      overdueLoans,
-      repaidLoans
+      ...stats,
     };
   }
 
   /**
    * Get loans & users by category for admin
    */
-  static async getLoansByCategory(category: "active" | "due" | "overdue" | "repaid", page = 1, limit = 20) {
+  static async getLoansByCategory(category?: "active" | "due" | "overdue" | "completed" | "pending" | "rejected", page = 1, limit = 20, search?: string) {
     const now = new Date();
     let filter: any = {};
+
+    console.log({ category, page, limit, search });
 
     if (category === "active") {
       filter.loan_payment_status = "in-progress";
@@ -748,8 +803,30 @@ export class LoanService {
     } else if (category === "overdue") {
       filter.loan_payment_status = "in-progress";
       filter.repayment_date = { $lt: now };
-    } else if (category === "repaid") {
+    } else if (category === "completed") {
       filter.loan_payment_status = "complete";
+    } else if (category === "pending") {
+      filter.status = "pending";
+    } else if (category === "rejected") {
+      filter.status = "rejected";
+    }
+
+    if (search) {
+      const regex = new RegExp(search, "i"); // case-insensitive search
+      filter.$or = [
+        { "first_name": regex },
+        { "last_name": regex },
+        { email: regex },
+        {
+          $expr: {
+            $regexMatch: {
+              input: { $concat: ["$first_name", " ", "$last_name"] },
+              regex: search,
+              options: "i",
+            },
+          },
+        },
+      ];
     }
 
     const skip = (page - 1) * limit;

@@ -8,17 +8,6 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
         step((generator = generator.apply(thisArg, _arguments || [])).next());
     });
 };
-var __rest = (this && this.__rest) || function (s, e) {
-    var t = {};
-    for (var p in s) if (Object.prototype.hasOwnProperty.call(s, p) && e.indexOf(p) < 0)
-        t[p] = s[p];
-    if (s != null && typeof Object.getOwnPropertySymbols === "function")
-        for (var i = 0, p = Object.getOwnPropertySymbols(s); i < p.length; i++) {
-            if (e.indexOf(p[i]) < 0 && Object.prototype.propertyIsEnumerable.call(s, p[i]))
-                t[p[i]] = s[p[i]];
-        }
-    return t;
-};
 var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
@@ -156,46 +145,52 @@ class UserService {
      */
     static login(email, password) {
         return __awaiter(this, void 0, void 0, function* () {
+            var _a;
             if (!email || !password) {
                 throw new exceptions_1.BadRequestError("Email and password are required");
             }
+            // Find user (as a Mongoose doc so we can save)
             const user = yield user_model_1.default.findOne({ email });
             if (!user)
                 throw new exceptions_1.UnauthorizedError("Invalid Email");
-            if ((user === null || user === void 0 ? void 0 : user.status) && user.status !== "active")
+            if ((user === null || user === void 0 ? void 0 : user.status) && user.status !== "active") {
                 throw new exceptions_1.UnauthorizedError(`Account has been suspended! Contact admin for revert action.`);
-            const { password: encrypted } = user;
-            // decrypt found user password
-            const decrypted = (0, passwordUtils_1.decodePassword)(encrypted);
-            // compare decrypted password with sent password
-            if (password !== decrypted)
+            }
+            // Verify password
+            const decrypted = (0, passwordUtils_1.decodePassword)(user.password);
+            if (password !== decrypted) {
                 throw new exceptions_1.UnauthorizedError(`Incorrect Password!`);
-            const { password: dbPassword } = user, // strip out password so would'nt send back to client
-            _user = __rest(user, ["password"]);
+            }
+            // JWT payload
             const userToSign = {
                 accountType: user.role,
-                id: _user._id
+                id: user._id
             };
-            // create JWTs
+            // Create JWTs
             const accessToken = jsonwebtoken_1.default.sign(userToSign, String(config_1.ACCESS_TOKEN_SECRET), {
                 expiresIn: constants_1.ACCESS_TOKEN_EXPIRES_IN,
             });
             const refreshToken = jsonwebtoken_1.default.sign(userToSign, String(config_1.REFRESH_TOKEN_SECRET), {
                 expiresIn: constants_1.REFRESH_TOKEN_EXPIRES,
             });
-            // update current user refresh token
-            const refreshTokens = user.refresh_tokens;
-            refreshTokens.push(refreshToken);
-            user.refresh_tokens = refreshTokens;
-            // Limit refresh tokens to prevent memory bloat
-            if (refreshTokens.length > 5) {
-                refreshTokens.splice(0, refreshTokens.length - 5);
+            // Manage refresh tokens
+            user.refresh_tokens.push(refreshToken);
+            if (user.refresh_tokens.length > 5) {
+                user.refresh_tokens.splice(0, user.refresh_tokens.length - 5);
             }
+            // Update last sign in
             user.last_sign_in_at = (0, convertDate_1.getCurrentTimestamp)();
             yield user.save();
-            // Send login alert (async)
-            yield notification_service_1.NotificationService.sendLoginAlert(user.email, user.user_metadata.first_name || "");
-            return Object.assign(Object.assign({}, _user), { refreshToken, accessToken });
+            // Send login alert (async, non-blocking)
+            notification_service_1.NotificationService.sendLoginAlert(user.email, ((_a = user.user_metadata) === null || _a === void 0 ? void 0 : _a.first_name) || "").catch(() => null);
+            // Convert to plain object after saving
+            const userObj = user.toObject();
+            // Remove sensitive/internal fields
+            delete userObj.password;
+            delete userObj.__v;
+            delete userObj.refresh_tokens;
+            return Object.assign(Object.assign({}, userObj), { refreshToken,
+                accessToken });
         });
     }
     /**

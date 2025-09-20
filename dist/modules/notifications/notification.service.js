@@ -15,17 +15,19 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.NotificationService = void 0;
 const nodemailer_1 = __importDefault(require("nodemailer"));
 const transporter = nodemailer_1.default.createTransport({
-    service: "gmail",
+    host: process.env.EMAIL_HOST, // smtp.mailgun.org
+    port: Number(process.env.EMAIL_PORT_NUMBER) || 587,
+    secure: false, // Mailgun uses STARTTLS on port 587
     auth: {
-        user: process.env.SMTP_USER || "primefinancials68@gmail.com",
-        pass: process.env.SMTP_PASS || "your_app_password",
+        user: process.env.EMAIL_USERNAME, // postmaster@primefinance.live
+        pass: process.env.EMAIL_PASSWORD, // Mailgun SMTP password
     },
 });
 class NotificationService {
     static sendEmail(to, subject, html) {
         return __awaiter(this, void 0, void 0, function* () {
             yield transporter.sendMail({
-                from: `"Prime Finance" <${process.env.SMTP_USER}>`,
+                from: `${process.env.EMAIL_USERNAME}`,
                 to,
                 subject,
                 html,

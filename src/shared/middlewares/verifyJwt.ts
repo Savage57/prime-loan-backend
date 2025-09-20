@@ -20,14 +20,14 @@ export default function (): any {
 
       if (bearer !== "Bearer") throw new UnauthorizedError(`Bearer not passed in authorization headers`)
 
-      const decoded: any = JWT.verify(token, String(ACCESS_TOKEN_SECRET))
+      const decoded: any = JWT.verify(token, String(ACCESS_TOKEN_SECRET));
       
       if (decoded.accountType === 'user') {
-          const user = await UserService.getUser(decoded.id)
+          const user = await UserService.getUser(decoded.id);
           if(!user) throw new UnauthorizedError(`User recently deleted.`)
           req.user = user
       } else if (decoded.accountType === 'admin') {
-        const admin = await UserService.getUser(decoded.id)
+        const admin = await UserService.getUser(decoded.id);
         if(!admin) throw new UnauthorizedError(`Admin recently deleted.`)
         req.admin = admin;
       } else throw new UnauthorizedError();

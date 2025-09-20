@@ -66,28 +66,26 @@ export class TransferService {
           naration: request.naration
         }], { session });
 
-        if (transfer.transferType === 'intra') {
-          const user = await User.findOne({ "user_metadata.accountNo": transfer.fromAccount }).session(session);
+        const user = await User.findOne({ "user_metadata.accountNo": transfer.fromAccount }).session(session);
 
-          if (user) {
-            if(type == "transfer") {
-              // Create debit ledger entry
-              await LedgerService.createEntry({
-                traceId,
-                userId: user._id,
-                account: `user_wallet:${user._id}`,
-                entryType: 'DEBIT',
-                category: 'transfer',
-                amount: request.amount,
-                status: 'PENDING',
-                idempotencyKey: request.idempotencyKey,
-                meta: { transferId: transfer._id, toAccount: request.toAccount }
-              }, session);
-            }
-
-            user.user_metadata.wallet = String(Number(user.user_metadata.wallet || 0) - Number(transfer.amount));
-            await user.save();
+        if (user) {
+          if(type == "transfer") {
+            // Create debit ledger entry
+            await LedgerService.createEntry({
+              traceId,
+              userId: user._id,
+              account: `user_wallet:${user._id}`,
+              entryType: 'DEBIT',
+              category: 'transfer',
+              amount: request.amount,
+              status: 'PENDING',
+              idempotencyKey: request.idempotencyKey,
+              meta: { transferId: transfer._id, toAccount: request.toAccount }
+            }, session);
           }
+
+          user.user_metadata.wallet = String(Number(user.user_metadata.wallet || 0) - Number(transfer.amount));
+          await user.save();
         }
 
         const result: TransferResult = {
@@ -381,7 +379,7 @@ export class TransferService {
       fromAccount: body.originator_account_number,
       toAccount: body.account_number,
       amount: body.amount,
-      transferType: 'intra',
+      transferType: body.originator_bank === "999999"? 'intra' : "inter",
       status: 'COMPLETED',
       reference: body.reference,
       remark: body.originator_narration,

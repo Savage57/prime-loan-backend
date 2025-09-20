@@ -369,7 +369,7 @@ export class SavingsService {
   /**
    * Get savings by category for admin
    */
-  static async getSavingsByCategory(category: "active" | "matured" | "withdrawn", page = 1, limit = 20) {
+  static async getSavingsByCategory(category?: "active" | "matured" | "withdrawn", page = 1, limit = 20, search?: string) {
     const now = new Date();
     let filter: any = {};
 
@@ -380,6 +380,14 @@ export class SavingsService {
       filter.maturityDate = { $lte: now };
     } else if (category === "withdrawn") {
       filter.status = { $in: ["WITHDRAWN", "COMPLETED"] };
+    }
+
+    if (search) {
+      const regex = new RegExp(search, "i"); // case-insensitive search
+      filter.$or = [
+        { "planName": regex },
+        { "planType": regex }
+      ];
     }
 
     const skip = (page - 1) * limit;

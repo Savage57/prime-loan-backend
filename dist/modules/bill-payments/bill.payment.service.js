@@ -22,6 +22,7 @@ const transfer_service_1 = require("../transfers/transfer.service");
 const vfd_provider_1 = require("../../shared/providers/vfd.provider");
 const user_model_1 = __importDefault(require("../users/user.model"));
 const js_sha512_1 = require("js-sha512");
+const bill_payment_model_1 = require("./bill-payment.model");
 function requireExtra(value, name, service) {
     if (value === undefined || value === null || (typeof value === 'string' && value.trim() === '')) {
         throw new Error(`Missing required '${name}' for serviceType='${service}'`);
@@ -209,6 +210,68 @@ class BillPaymentService {
                     return Object.assign(Object.assign({}, (yield vfdProvider.transfer(transferReq))), { reference: result.reference });
                 })
             });
+        });
+    }
+    static getUserBillPayments(userId_1) {
+        return __awaiter(this, arguments, void 0, function* (userId, page = 1, limit = 20, status, type, search) {
+            const skip = (page - 1) * limit;
+            const query = { userId };
+            if (status)
+                query.status = status;
+            if (status)
+                query.serviceType = type;
+            if (search) {
+                const regex = new RegExp(search, "i"); // case-insensitive search
+                query.$or = [
+                    { "traceId": regex },
+                    { "providerRef": regex },
+                    { "customerReference": regex },
+                ];
+            }
+            const billPayments = yield bill_payment_model_1.BillPayment.find(query)
+                .populate('userId', 'email user_metadata.first_name user_metadata.surname')
+                .skip(skip)
+                .limit(limit)
+                .sort({ createdAt: -1 })
+                .lean();
+            const total = yield bill_payment_model_1.BillPayment.countDocuments(query);
+            return {
+                billPayments,
+                page,
+                pages: Math.ceil(total / limit),
+                total
+            };
+        });
+    }
+    static getBillPayments() {
+        return __awaiter(this, arguments, void 0, function* (page = 1, limit = 20, status, type, search) {
+            const skip = (page - 1) * limit;
+            const query = {};
+            if (status)
+                query.status = status;
+            if (status)
+                query.serviceType = type;
+            if (search) {
+                const regex = new RegExp(search, "i"); // case-insensitive search
+                query.$or = [
+                    { "traceId": regex },
+                    { "providerRef": regex },
+                    { "customerReference": regex },
+                ];
+            }
+            const billPayments = yield bill_payment_model_1.BillPayment.find(query)
+                .populate('userId', 'email user_metadata.first_name user_metadata.surname')
+                .skip(skip)
+                .limit(limit)
+                .sort({ createdAt: -1 })
+                .lean();
+            const total = yield bill_payment_model_1.BillPayment.countDocuments(query);
+            return {
+                billPayments,
+                page,
+                pages: Math.ceil(total / limit),
+                total
+            };
         });
     }
 }

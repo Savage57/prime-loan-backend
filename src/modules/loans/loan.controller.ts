@@ -368,15 +368,16 @@ export class LoanController {
       const admin = req.admin;
       const page = Number(req.query.page) || 1;
       const limit = Number(req.query.limit) || 20;
-      const category = String(req.params.category) as "active" | "due" | "overdue" | "repaid";
+      const category = req.query.category as "active" | "due" | "overdue" | "completed" | "pending" | "rejected" | undefined;
+      const search = req.query.search as string | undefined;
 
       checkPermission(admin, "view_loans");
 
-      const { loans } = await LoanService.getLoansByCategory(category, page, limit);
+      const data = await LoanService.getLoansByCategory(category, page, limit, search);
 
       res.status(200).json({
         status: "success",
-        data: loans,
+        data
       });
     } catch (error) {
       next(error);

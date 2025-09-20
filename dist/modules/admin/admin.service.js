@@ -280,6 +280,38 @@ class AdminService {
             return health;
         });
     }
+    getTransactions() {
+        return __awaiter(this, arguments, void 0, function* (page = 1, limit = 20, status, type, search) {
+            const skip = (page - 1) * limit;
+            const query = {};
+            if (status)
+                query.status = status;
+            if (status)
+                query.transferType = type;
+            if (search) {
+                const regex = new RegExp(search, "i"); // case-insensitive search
+                query.$or = [
+                    { "traceId": regex },
+                    { "reference": regex },
+                    { "toAccount": regex },
+                    { "fromAccount": regex }
+                ];
+            }
+            const transfers = yield transfer_model_1.Transfer.find(query)
+                .populate('userId', 'email user_metadata.first_name user_metadata.surname')
+                .skip(skip)
+                .limit(limit)
+                .sort({ createdAt: -1 })
+                .lean();
+            const total = yield transfer_model_1.Transfer.countDocuments(query);
+            return {
+                transfers,
+                page,
+                pages: Math.ceil(total / limit),
+                total
+            };
+        });
+    }
     /**
      * Return flagged transfers and loans for manual review
      */
@@ -288,8 +320,20 @@ class AdminService {
             const skip = (page - 1) * limit;
             const flaggedTransfers = yield transfer_model_1.Transfer.find({
                 $or: [
-                    { status: 'PENDING', createdAt: { $lt: new Date(Date.now() - 24 * 60 * 60 * 1000) } },
+                    { status: 'PENDING', createdAt: { $lt: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) } },
                     { amount: { $gt: 1000000 } },
+                    { 'meta.flagged': true }
+                ]
+            })
+                .populate('userId', 'email user_metadata.first_name user_metadata.surname')
+                .skip(skip)
+                .limit(limit)
+                .sort({ createdAt: -1 })
+                .lean();
+            const flaggedBillPayments = yield bill_payment_model_1.BillPayment.find({
+                $or: [
+                    { status: 'PENDING', createdAt: { $lt: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) } },
+                    { amount: { $gt: 50000 } },
                     { 'meta.flagged': true }
                 ]
             })
@@ -300,7 +344,7 @@ class AdminService {
                 .lean();
             const flaggedLoans = yield loan_model_1.default.find({
                 $or: [
-                    { amount: { $gt: 500000 } },
+                    { amount: { $gt: 200000 } },
                     { 'credit_score.remarks': /suspicious/i },
                     { status: 'pending', createdAt: { $lt: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) } }
                 ]
@@ -309,10 +353,14 @@ class AdminService {
                 .limit(limit)
                 .sort({ createdAt: -1 })
                 .lean();
+            const total = ((flaggedTransfers === null || flaggedTransfers === void 0 ? void 0 : flaggedTransfers.length) || 0) + ((flaggedLoans === null || flaggedLoans === void 0 ? void 0 : flaggedLoans.length) || 0) + ((flaggedBillPayments === null || flaggedBillPayments === void 0 ? void 0 : flaggedBillPayments.length) || 0);
             return {
                 transfers: flaggedTransfers,
                 loans: flaggedLoans,
-                total: ((flaggedTransfers === null || flaggedTransfers === void 0 ? void 0 : flaggedTransfers.length) || 0) + ((flaggedLoans === null || flaggedLoans === void 0 ? void 0 : flaggedLoans.length) || 0)
+                billPayments: flaggedBillPayments,
+                page,
+                pages: Math.ceil(total / limit),
+                total
             };
         });
     }
@@ -426,15 +474,35 @@ class AdminService {
         });
     }
     listAllUsers(adminId_1) {
-        return __awaiter(this, arguments, void 0, function* (adminId, page = 1, limit = 50, filter) {
+        return __awaiter(this, arguments, void 0, function* (adminId, page = 1, limit = 50, status, search) {
             const admin = yield user_model_1.default.findById(adminId);
-            if (!admin || admin.role !== 'admin') {
-                throw new exceptions_1.NotFoundError('Admin not found');
+            if (!admin || admin.role !== "admin") {
+                throw new exceptions_1.NotFoundError("Admin not found");
             }
-            const users = yield user_model_1.default.find({ role: 'user' })
+            const query = { role: "user" };
+            if (status)
+                query.status = status;
+            if (search) {
+                const regex = new RegExp(search, "i"); // case-insensitive search
+                query.$or = [
+                    { "user_metadata.first_name": regex },
+                    { "user_metadata.surname": regex },
+                    { email: regex },
+                    {
+                        $expr: {
+                            $regexMatch: {
+                                input: { $concat: ["$user_metadata.first_name", " ", "$user_metadata.surname"] },
+                                regex: search,
+                                options: "i",
+                            },
+                        },
+                    },
+                ];
+            }
+            const users = yield user_model_1.default.find(query)
                 .skip((page - 1) * limit)
                 .limit(limit);
-            const total = yield user_model_1.default.countDocuments(Object.assign({ role: 'user' }, (filter && { status: filter.status })));
+            const total = yield user_model_1.default.countDocuments(query);
             return { users, total, page, pages: Math.ceil(total / limit) };
         });
     }

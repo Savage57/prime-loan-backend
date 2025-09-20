@@ -167,7 +167,7 @@ const router = express_1.default.Router();
 router.post("/create", (0, middlewares_1.verifyJwtRest)(), (0, middlewares_1.validateReqBody)(validations_1.createAdminAccountSchema), admin_controller_1.AdminController.createAdminAccount);
 /**
  * @swagger
- * /api/users/login:
+ * /backoffice/login:
  *   post:
  *     summary: User login
  *     tags: [Users]
@@ -187,7 +187,7 @@ router.post("/create", (0, middlewares_1.verifyJwtRest)(), (0, middlewares_1.val
  *       200:
  *         description: Login successful (returns accessToken and refreshToken)
  */
-router.post("/users/login", (0, middlewares_1.validateReqBody)(validations_1.loginSchema), admin_controller_1.AdminController.login);
+router.post("/login", (0, middlewares_1.validateReqBody)(validations_1.loginSchema), admin_controller_1.AdminController.login);
 /**
  * @swagger
  * /backoffice/profile:
@@ -343,7 +343,7 @@ router.post("/update-password-pin", (0, middlewares_1.validateReqBody)(validatio
  *       200:
  *         description: Admin returned
  */
-router.get("/:adminId", (0, middlewares_1.verifyJwtRest)(), admin_controller_1.AdminController.getAdmin);
+router.get("/:adminId([0-9a-fA-F]{24})", (0, middlewares_1.verifyJwtRest)(), admin_controller_1.AdminController.getAdmin);
 /**
  * @swagger
  * /backoffice/activate:
@@ -387,7 +387,7 @@ router.post("/activate", (0, middlewares_1.verifyJwtRest)(), (0, middlewares_1.v
  *       200:
  *         description: Permissions updated
  */
-router.put("/:adminId/permissions", (0, middlewares_1.verifyJwtRest)(), (0, middlewares_1.validateReqBody)(validations_1.updateAdminPermissionsSchema), admin_controller_1.AdminController.updateAdminPermissions);
+router.put("/:adminId([0-9a-fA-F]{24})/permissions", (0, middlewares_1.verifyJwtRest)(), (0, middlewares_1.validateReqBody)(validations_1.updateAdminPermissionsSchema), admin_controller_1.AdminController.updateAdminPermissions);
 /* =============================
    USER MANAGEMENT
    ============================= */
@@ -494,7 +494,7 @@ router.get("/loans", (0, middlewares_1.verifyJwtRest)(), (0, middlewares_1.valid
  *       200:
  *         description: Loan details
  */
-router.get("/loans/:id", (0, middlewares_1.verifyJwtRest)(), loan_controller_1.LoanController.singleLoanHistory);
+router.get("/loans/:id([0-9a-fA-F]{24})", (0, middlewares_1.verifyJwtRest)(), loan_controller_1.LoanController.singleLoanHistory);
 /**
  * @swagger
  * /backoffice/loans/disburse:
@@ -538,7 +538,7 @@ router.post("/loans/disburse", (0, middlewares_1.verifyJwtRest)(), (0, middlewar
  *       200:
  *         description: Loan rejected
  */
-router.post("/loans/:id/reject", (0, middlewares_1.verifyJwtRest)(), (0, middlewares_1.validateReqBody)(validations_1.rejectLoanSchema), loan_controller_1.LoanController.rejectLoan);
+router.post("/loans/:id([0-9a-fA-F]{24})/reject", (0, middlewares_1.verifyJwtRest)(), (0, middlewares_1.validateReqBody)(validations_1.rejectLoanSchema), loan_controller_1.LoanController.rejectLoan);
 /**
  * @swagger
  * /backoffice/loans/stats:
@@ -602,15 +602,58 @@ router.get("/savings/by-category", (0, middlewares_1.verifyJwtRest)(), (0, middl
    ============================= */
 /**
  * @swagger
- * /backoffice/dashboard:
- *   get:
- *     tags: [Admin - Reports]
- *     summary: Get admin dashboard stats
- *     security:
- *       - bearerAuth: []
- *     responses:
- *       200:
- *         description: Dashboard stats
+ * components:
+ *   schemas:
+ *     AdminStats:
+ *       type: object
+ *       properties:
+ *         users:
+ *           type: object
+ *           properties:
+ *             total: { type: integer }
+ *             active: { type: integer }
+ *             inactive: { type: integer }
+ *             newThisMonth: { type: integer }
+ *         loans:
+ *           type: object
+ *           properties:
+ *             total: { type: integer }
+ *             pending: { type: integer }
+ *             active: { type: integer }
+ *             overdue: { type: integer }
+ *             totalDisbursed: { type: number }
+ *             totalOutstanding: { type: number }
+ *         transfers:
+ *           type: object
+ *           properties:
+ *             total: { type: integer }
+ *             pending: { type: integer }
+ *             completed: { type: integer }
+ *             failed: { type: integer }
+ *             totalVolume: { type: number }
+ *         billPayments:
+ *           type: object
+ *           properties:
+ *             total: { type: integer }
+ *             pending: { type: integer }
+ *             completed: { type: integer }
+ *             failed: { type: integer }
+ *             totalVolume: { type: number }
+ *         savings:
+ *           type: object
+ *           properties:
+ *             totalPlans: { type: integer }
+ *             activePlans: { type: integer }
+ *             totalPrincipal: { type: number }
+ *             totalInterestEarned: { type: number }
+ *         revenue:
+ *           type: object
+ *           properties:
+ *             totalRevenue: { type: number }
+ *             loanInterest: { type: number }
+ *             billPaymentFees: { type: number }
+ *             transferFees: { type: number }
+ *             savingsPenalties: { type: number }
  */
 router.get("/dashboard", (0, middlewares_1.verifyJwtRest)(), admin_controller_1.AdminController.getDashboardStats);
 /**
@@ -672,7 +715,7 @@ router.get("/profits", (0, middlewares_1.verifyJwtRest)(), (0, middlewares_1.val
  *       200:
  *         description: Transaction details
  */
-router.get("/transactions/:traceId", (0, middlewares_1.verifyJwtRest)(), admin_controller_1.AdminController.getTransactionDetails);
+router.get("/transactions/:traceId([0-9a-fA-F]{24})", (0, middlewares_1.verifyJwtRest)(), admin_controller_1.AdminController.getTransactionDetails);
 /**
  * @swagger
  * /backoffice/transfers/{id}/requery:
@@ -691,9 +734,10 @@ router.get("/transactions/:traceId", (0, middlewares_1.verifyJwtRest)(), admin_c
  *       200:
  *         description: Requery result
  */
-router.post("/transfers/:id/requery", (0, middlewares_1.verifyJwtRest)(), admin_controller_1.AdminController.requeryTransfer);
+router.post("/transfers/:id([0-9a-fA-F]{24})/requery", (0, middlewares_1.verifyJwtRest)(), admin_controller_1.AdminController.requeryTransfer);
 router.get("/reconciliation/inconsistencies", (0, middlewares_1.verifyJwtRest)(), admin_controller_1.AdminController.getReconciliationInconsistencies);
 router.get("/transactions/flagged", (0, middlewares_1.verifyJwtRest)(), (0, middlewares_1.validateReqQuery)(validations_1.flaggedQuerySchema), admin_controller_1.AdminController.getFlaggedTransactions);
+router.get("/transactions", (0, middlewares_1.verifyJwtRest)(), (0, middlewares_1.validateReqQuery)(validations_1.transactionQuerySchema), admin_controller_1.AdminController.getTransactions);
 /* =============================
    ACTIVITY LOGS
    ============================= */

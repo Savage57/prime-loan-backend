@@ -33,7 +33,8 @@ import {
   updatePasswordOrPinSchema,
   updateUserSchema,
   validateResetSchema,
-  loginSchema
+  loginSchema,
+  transactionQuerySchema
 } from "../validations";
 import { idempotencyMiddleware } from "../shared/idempotency/middleware";
 import { checkPermission } from "../shared/utils/checkPermission";
@@ -387,7 +388,7 @@ router.post("/update-password-pin", validateReqBody(updatePasswordOrPinSchema), 
  *       200:
  *         description: Admin returned
  */
-router.get("/:adminId", verifyJwtRest(), AdminController.getAdmin as any);
+router.get("/:adminId([0-9a-fA-F]{24})", verifyJwtRest(), AdminController.getAdmin as any);
 
 /**
  * @swagger
@@ -439,7 +440,7 @@ router.post(
  *         description: Permissions updated
  */
 router.put(
-  "/:adminId/permissions",
+  "/:adminId([0-9a-fA-F]{24})/permissions",
   verifyJwtRest(),
   validateReqBody(updateAdminPermissionsSchema),
   AdminController.updateAdminPermissions as any
@@ -566,7 +567,7 @@ router.get("/loans", verifyJwtRest(), validateReqQuery(loanListQuerySchema), Loa
  *       200:
  *         description: Loan details
  */
-router.get("/loans/:id", verifyJwtRest(), LoanController.singleLoanHistory as any);
+router.get("/loans/:id([0-9a-fA-F]{24})", verifyJwtRest(), LoanController.singleLoanHistory as any);
 
 /**
  * @swagger
@@ -612,7 +613,7 @@ router.post("/loans/disburse", verifyJwtRest(), idempotencyMiddleware() as any, 
  *       200:
  *         description: Loan rejected
  */
-router.post("/loans/:id/reject", verifyJwtRest(), validateReqBody(rejectLoanSchema), LoanController.rejectLoan as any);
+router.post("/loans/:id([0-9a-fA-F]{24})/reject", verifyJwtRest(), validateReqBody(rejectLoanSchema), LoanController.rejectLoan as any);
 
 /**
  * @swagger
@@ -685,15 +686,58 @@ router.get("/savings/by-category", verifyJwtRest(), validateReqQuery(flaggedQuer
 
 /**
  * @swagger
- * /backoffice/dashboard:
- *   get:
- *     tags: [Admin - Reports]
- *     summary: Get admin dashboard stats
- *     security:
- *       - bearerAuth: []
- *     responses:
- *       200:
- *         description: Dashboard stats
+ * components:
+ *   schemas:
+ *     AdminStats:
+ *       type: object
+ *       properties:
+ *         users:
+ *           type: object
+ *           properties:
+ *             total: { type: integer }
+ *             active: { type: integer }
+ *             inactive: { type: integer }
+ *             newThisMonth: { type: integer }
+ *         loans:
+ *           type: object
+ *           properties:
+ *             total: { type: integer }
+ *             pending: { type: integer }
+ *             active: { type: integer }
+ *             overdue: { type: integer }
+ *             totalDisbursed: { type: number }
+ *             totalOutstanding: { type: number }
+ *         transfers:
+ *           type: object
+ *           properties:
+ *             total: { type: integer }
+ *             pending: { type: integer }
+ *             completed: { type: integer }
+ *             failed: { type: integer }
+ *             totalVolume: { type: number }
+ *         billPayments:
+ *           type: object
+ *           properties:
+ *             total: { type: integer }
+ *             pending: { type: integer }
+ *             completed: { type: integer }
+ *             failed: { type: integer }
+ *             totalVolume: { type: number }
+ *         savings:
+ *           type: object
+ *           properties:
+ *             totalPlans: { type: integer }
+ *             activePlans: { type: integer }
+ *             totalPrincipal: { type: number }
+ *             totalInterestEarned: { type: number }
+ *         revenue:
+ *           type: object
+ *           properties:
+ *             totalRevenue: { type: number }
+ *             loanInterest: { type: number }
+ *             billPaymentFees: { type: number }
+ *             transferFees: { type: number }
+ *             savingsPenalties: { type: number }
  */
 router.get("/dashboard", verifyJwtRest(), AdminController.getDashboardStats as any);
 
@@ -760,7 +804,7 @@ router.get("/profits", verifyJwtRest(), validateReqQuery(profitReportQuerySchema
  *       200:
  *         description: Transaction details
  */
-router.get("/transactions/:traceId", verifyJwtRest(), AdminController.getTransactionDetails as any);
+router.get("/transactions/:traceId([0-9a-fA-F]{24})", verifyJwtRest(), AdminController.getTransactionDetails as any);
 
 /**
  * @swagger
@@ -780,11 +824,13 @@ router.get("/transactions/:traceId", verifyJwtRest(), AdminController.getTransac
  *       200:
  *         description: Requery result
  */
-router.post("/transfers/:id/requery", verifyJwtRest(), AdminController.requeryTransfer as any);
+router.post("/transfers/:id([0-9a-fA-F]{24})/requery", verifyJwtRest(), AdminController.requeryTransfer as any);
 
 router.get("/reconciliation/inconsistencies", verifyJwtRest(), AdminController.getReconciliationInconsistencies as any);
 
-router.get("/transactions/flagged", verifyJwtRest(), validateReqQuery(flaggedQuerySchema), AdminController.getFlaggedTransactions as any);
+router.get("/transactions/flagged", verifyJwtRest(), AdminController.getFlaggedTransactions as any);
+
+router.get("/transactions", verifyJwtRest(), validateReqQuery(transactionQuerySchema), AdminController.getTransactions as any);
 
 /* =============================
    ACTIVITY LOGS

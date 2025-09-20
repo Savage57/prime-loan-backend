@@ -313,7 +313,7 @@ class SavingsService {
      * Get savings by category for admin
      */
     static getSavingsByCategory(category_1) {
-        return __awaiter(this, arguments, void 0, function* (category, page = 1, limit = 20) {
+        return __awaiter(this, arguments, void 0, function* (category, page = 1, limit = 20, search) {
             const now = new Date();
             let filter = {};
             if (category === "active") {
@@ -325,6 +325,13 @@ class SavingsService {
             }
             else if (category === "withdrawn") {
                 filter.status = { $in: ["WITHDRAWN", "COMPLETED"] };
+            }
+            if (search) {
+                const regex = new RegExp(search, "i"); // case-insensitive search
+                filter.$or = [
+                    { "planName": regex },
+                    { "planType": regex }
+                ];
             }
             const skip = (page - 1) * limit;
             const [plans, total] = yield Promise.all([

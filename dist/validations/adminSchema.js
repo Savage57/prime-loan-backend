@@ -3,7 +3,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.activityLogsQuerySchema = exports.updateAdminPermissionsSchema = exports.flaggedQuerySchema = exports.profitReportQuerySchema = exports.businessReportQuerySchema = exports.loanListQuerySchema = exports.rejectLoanSchema = exports.disburseLoanSchema = exports.bulkLoanActionSchema = exports.getUsersQuerySchema = exports.activateUserReqBodySchema = exports.activateAdminReqBodySchema = exports.createAdminAccountSchema = void 0;
+exports.activityLogsQuerySchema = exports.updateAdminPermissionsSchema = exports.transactionQuerySchema = exports.flaggedQuerySchema = exports.profitReportQuerySchema = exports.businessReportQuerySchema = exports.loanListQuerySchema = exports.rejectLoanSchema = exports.disburseLoanSchema = exports.bulkLoanActionSchema = exports.getUsersQuerySchema = exports.activateUserReqBodySchema = exports.activateAdminReqBodySchema = exports.createAdminAccountSchema = void 0;
 // src/validations/admin.validation.ts
 const joi_1 = __importDefault(require("joi"));
 /**
@@ -42,7 +42,7 @@ exports.getUsersQuerySchema = joi_1.default.object({
     page: joi_1.default.number().integer().min(1).default(1),
     limit: joi_1.default.number().integer().min(1).max(200).default(20),
     status: joi_1.default.string().valid("active", "inactive").optional(),
-    filter: joi_1.default.string().optional()
+    search: joi_1.default.string().optional()
 });
 /**
  * Schema for bulk loan action (approve|reject)
@@ -91,6 +91,13 @@ exports.profitReportQuerySchema = joi_1.default.object({
 exports.flaggedQuerySchema = joi_1.default.object({
     page: joi_1.default.number().integer().min(1).default(1),
     limit: joi_1.default.number().integer().min(1).max(200).default(20)
+});
+exports.transactionQuerySchema = joi_1.default.object({
+    page: joi_1.default.number().integer().min(1).default(1),
+    limit: joi_1.default.number().integer().min(1).max(200).default(20),
+    search: joi_1.default.string(),
+    type: joi_1.default.string(),
+    status: joi_1.default.string(),
 });
 /**
  * Schema for updating admin permissions (body)

@@ -202,6 +202,7 @@ class AdminController {
                 });
             }
             catch (error) {
+                console.log('Dashboard Error: ', error);
                 next(error);
             }
         });
@@ -235,6 +236,27 @@ class AdminController {
                 (0, checkPermission_1.checkPermission)(admin, 'manage_transactions');
                 const { page, limit } = parsePageLimit(req.query);
                 const result = yield adminService.getFlaggedTransactions(page, limit);
+                res.status(200).json({
+                    status: 'success',
+                    data: result
+                });
+            }
+            catch (error) {
+                next(error);
+            }
+        });
+    }
+    /**
+     * List transactions (transfers) requiring manual review
+     */
+    static getTransactions(req, res, next) {
+        return __awaiter(this, void 0, void 0, function* () {
+            try {
+                const admin = req.admin;
+                (0, checkPermission_1.checkPermission)(admin, 'manage_transactions');
+                const { search, type, status } = req.query;
+                const { page, limit } = parsePageLimit(req.query);
+                const result = yield adminService.getTransactions(page, limit, status, type, search);
                 res.status(200).json({
                     status: 'success',
                     data: result
@@ -362,13 +384,10 @@ class AdminController {
                 if (!(actingAdmin === null || actingAdmin === void 0 ? void 0 : actingAdmin.is_super_admin)) {
                     throw new exceptions_1.UnauthorizedError('Only super admins can update admin permissions');
                 }
-                const { adminId } = req.params;
                 const { permissions } = req.body;
-                if (!adminId)
-                    return res.status(400).json({ status: 'failed', message: 'adminId is required' });
                 if (!Array.isArray(permissions))
                     return res.status(400).json({ status: 'failed', message: 'permissions must be an array' });
-                const updated = yield adminService.updateAdminPermissions(adminId, permissions);
+                const updated = yield adminService.updateAdminPermissions((actingAdmin === null || actingAdmin === void 0 ? void 0 : actingAdmin._id) || "", permissions);
                 res.status(200).json({
                     status: 'success',
                     data: updated
@@ -388,8 +407,7 @@ class AdminController {
                 const admin = req.admin;
                 (0, checkPermission_1.checkPermission)(admin, 'view_reports');
                 const { page, limit } = parsePageLimit(req.query);
-                const adminId = String(req.query.adminId || '');
-                const logs = yield adminService.getAdminActivityLogs(adminId || undefined, page, limit);
+                const logs = yield adminService.getAdminActivityLogs((admin === null || admin === void 0 ? void 0 : admin._id) || undefined, page, limit);
                 res.status(200).json({
                     status: 'success',
                     data: logs
@@ -427,7 +445,7 @@ class AdminController {
             try {
                 const admin = req.admin;
                 (0, checkPermission_1.checkPermission)(admin, 'view_savings');
-                const category = String(req.query.category || 'active');
+                const category = req.query.category;
                 const { page, limit } = parsePageLimit(req.query);
                 const result = yield savings_service_1.SavingsService.getSavingsByCategory(category, page, limit);
                 res.status(200).json({
@@ -444,9 +462,10 @@ class AdminController {
         return __awaiter(this, void 0, void 0, function* () {
             const admin = req.admin;
             (0, checkPermission_1.checkPermission)(admin, 'view_users');
-            const { filter } = req.query;
+            const { status, search } = req.query;
+            console.log({ status, search });
             const { page, limit } = parsePageLimit(req.query);
-            const result = yield adminService.listAllUsers((admin === null || admin === void 0 ? void 0 : admin._id) || "", page, limit, filter);
+            const result = yield adminService.listAllUsers((admin === null || admin === void 0 ? void 0 : admin._id) || "", page, limit, status, search);
             res.status(200).json({
                 status: 'success',
                 data: result
@@ -624,22 +643,17 @@ class AdminController {
      */
     static changePassword(req, res, next) {
         return __awaiter(this, void 0, void 0, function* () {
-            try {
-                const { admin } = req;
-                if (!admin) {
-                    throw new exceptions_1.UnauthorizedError("Access denied");
-                }
-                const { oldPassword, newPassword } = req.body;
-                const userService = new user_service_1.UserService();
-                const result = yield userService.changePassword(req.admin._id, oldPassword, newPassword);
-                res.status(200).json({
-                    status: "success",
-                    data: result,
-                });
+            const { admin } = req;
+            if (!admin) {
+                throw new exceptions_1.UnauthorizedError("Access denied");
             }
-            catch (error) {
-                next(error);
-            }
+            const { oldPassword, newPassword } = req.body;
+            const userService = new user_service_1.UserService();
+            const result = yield userService.changePassword(req.admin._id, oldPassword, newPassword);
+            res.status(200).json({
+                status: "success",
+                data: result,
+            });
         });
     }
 }

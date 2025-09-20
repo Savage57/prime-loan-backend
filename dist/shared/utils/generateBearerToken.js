@@ -29,7 +29,6 @@ const generateBearerToken = (consumerKey, consumerSecret) => __awaiter(void 0, v
         const response = yield axios_1.default.post(config_1.authUrl, requestBody, {
             headers: { "Content-Type": "application/json" },
         });
-        console.log({ auth: "passed" });
         if (response.status !== 200) {
             throw new Error(`Failed to generate access token: ${response.data.message}`);
         }

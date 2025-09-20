@@ -41,7 +41,7 @@ export const getUsersQuerySchema = Joi.object({
   page: Joi.number().integer().min(1).default(1),
   limit: Joi.number().integer().min(1).max(200).default(20),
   status: Joi.string().valid("active", "inactive").optional(),
-  filter: Joi.string().optional()
+  search: Joi.string().optional()
 });
 
 /**
@@ -97,6 +97,14 @@ export const profitReportQuerySchema = Joi.object({
 export const flaggedQuerySchema = Joi.object({
   page: Joi.number().integer().min(1).default(1),
   limit: Joi.number().integer().min(1).max(200).default(20)
+});
+
+export const transactionQuerySchema = Joi.object({
+  page: Joi.number().integer().min(1).default(1),
+  limit: Joi.number().integer().min(1).max(200).default(20),
+  search: Joi.string(),
+  type: Joi.string(),
+  status: Joi.string(),
 });
 
 /**

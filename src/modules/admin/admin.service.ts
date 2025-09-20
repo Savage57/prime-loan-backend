@@ -157,6 +157,13 @@ export class AdminService {
     return admin;
   }
 
+  async getAdmins() {
+    const admin = await User.find({ });
+    if (!admin) throw new NotFoundError('No admin found');
+    
+    return admin;
+  }
+
   /**
    * Activate / Deactivate admin account
    */
@@ -349,41 +356,80 @@ export class AdminService {
     return health;
   }
 
-  /**
-   * Return flagged transfers and loans for manual review
-   */
-  async getFlaggedTransactions(page = 1, limit = 20) {
+  async getTransactions(page = 1, limit = 20, status?: string, type?: string, search?: string) {
     const skip = (page - 1) * limit;
 
-    const flaggedTransfers = await Transfer.find({
-      $or: [
-        { status: 'PENDING', createdAt: { $lt: new Date(Date.now() - 24 * 60 * 60 * 1000) } },
-        { amount: { $gt: 1000000 } },
-        { 'meta.flagged': true }
-      ]
-    })
+    const query: any = {};
+    if (status) query.status = status;
+    if (status) query.transferType = type;
+
+    if (search) {
+      const regex = new RegExp(search, "i"); // case-insensitive search
+      query.$or = [
+        { "traceId": regex },
+        { "reference": regex },
+        { "toAccount": regex },
+        { "fromAccount": regex }
+      ];
+    }
+
+    const transfers = await Transfer.find(query)
       .populate('userId', 'email user_metadata.first_name user_metadata.surname')
       .skip(skip)
       .limit(limit)
       .sort({ createdAt: -1 })
       .lean();
+    
+    const total = await Transfer.countDocuments(query); 
+
+    return {
+      transfers,
+      page,
+      pages: Math.ceil(total / limit),
+      total
+    };
+  }
+
+  /**
+   * Return flagged transfers and loans for manual review
+   */
+  async getFlaggedTransactions() {
+    const flaggedTransfers = await Transfer.find({
+      $or: [
+        { status: 'PENDING', createdAt: { $lt: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) } },
+        { amount: { $gt: 1000000 } },
+        { 'meta.flagged': true }
+      ]
+    })
+      .populate('userId', 'email user_metadata.first_name user_metadata.surname')
+      .sort({ createdAt: -1 })
+      .lean();
+
+    const flaggedBillPayments = await BillPayment.find({
+      $or: [
+        { status: 'PENDING', createdAt: { $lt: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) } },
+        { amount: { $gt: 50000 } },
+        { 'meta.flagged': true }
+      ]
+    })
+      .populate('userId', 'email user_metadata.first_name user_metadata.surname')
+      .sort({ createdAt: -1 })
+      .lean();
 
     const flaggedLoans = await Loan.find({
       $or: [
-        { amount: { $gt: 500000 } },
+        { amount: { $gt: 200000 } },
         { 'credit_score.remarks': /suspicious/i },
         { status: 'pending', createdAt: { $lt: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) } }
       ]
     })
-      .skip(skip)
-      .limit(limit)
       .sort({ createdAt: -1 })
       .lean();
 
     return {
       transfers: flaggedTransfers,
       loans: flaggedLoans,
-      total: (flaggedTransfers?.length || 0) + (flaggedLoans?.length || 0)
+      billPayments: flaggedBillPayments
     };
   }
 
@@ -434,7 +480,14 @@ export class AdminService {
           approvedLoans: { $sum: { $cond: [{ $eq: ['$status', 'accepted'] }, 1, 0] } },
           rejectedLoans: { $sum: { $cond: [{ $eq: ['$status', 'rejected'] }, 1, 0] } },
           totalDisbursed: { $sum: { $cond: [{ $eq: ['$status', 'accepted'] }, '$amount', 0] } },
-          totalRepaid: { $sum: { $subtract: ['$amount', '$outstanding'] } }
+          totalRepaid: {
+            $sum: {
+              $subtract: [
+                { $toDouble: "$amount" },
+                { $toDouble: "$outstanding" }
+              ]
+            }
+          }
         }
       }
     ]);
@@ -507,17 +560,45 @@ export class AdminService {
     };
   }
 
-  async listAllUsers(adminId: string, page = 1, limit = 50, filter?: { status?: string }) {
+  async listAllUsers(
+    adminId: string,
+    page = 1,
+    limit = 50,
+    status?: string,
+    search?: string
+  ) {
     const admin: any = await User.findById(adminId);
-    if (!admin || admin.role !== 'admin') {
-      throw new NotFoundError('Admin not found');
+    if (!admin || admin.role !== "admin") {
+      throw new NotFoundError("Admin not found");
     }
 
-    const users = await User.find({ role: 'user' })
+    const query: any = { role: "user" };
+    if (status) query.status = status;
+
+    if (search) {
+      const regex = new RegExp(search, "i"); // case-insensitive search
+      query.$or = [
+        { "user_metadata.first_name": regex },
+        { "user_metadata.surname": regex },
+        { email: regex },
+        {
+          $expr: {
+            $regexMatch: {
+              input: { $concat: ["$user_metadata.first_name", " ", "$user_metadata.surname"] },
+              regex: search,
+              options: "i",
+            },
+          },
+        },
+      ];
+    }
+
+    const users = await User.find(query)
       .skip((page - 1) * limit)
       .limit(limit);
-    const total = await User.countDocuments({ role: 'user', ...(filter && { status: filter.status }) });
 
-    return { users, total, page, pages: Math.ceil(total / limit) }
-  }
+    const total = await User.countDocuments(query);
+
+    return { users, total, page, pages: Math.ceil(total / limit) };
+  } 
 }

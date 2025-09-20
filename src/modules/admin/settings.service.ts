@@ -2,21 +2,15 @@ import { Settings, ISettings } from "./settings.model";
 
 export class SettingsService {
   /**
-   * Get current system settings
+   * Get current system settings (always returns the singleton doc)
    */
   static async getSettings(): Promise<ISettings> {
-    let settings = await Settings.findOne();
+    let settings = await Settings.findOne({ singleton: "singleton" });
     if (!settings) {
-      // initialize defaults if none exist
+      // initialize with schema defaults
       settings = await Settings.create({
-        autoLoanApproval: true,
-        maxLoanAmount: 5000000,
-        minCreditScore: 0.4,
-        transferEnabled: true,
-        transferDailyLimit: 100000000,
-        savingsEnabled: true,
-        billPaymentEnabled: true,
-        updatedBy: "system"
+        singleton: "singleton",
+        updatedBy: "system",
       });
     }
     return settings;
@@ -30,7 +24,7 @@ export class SettingsService {
     updates: Partial<ISettings>
   ): Promise<ISettings> {
     const settings = await Settings.findOneAndUpdate(
-      {},
+      { singleton: "singleton" },
       { ...updates, updatedBy: adminId, updatedAt: new Date() },
       { new: true, upsert: true }
     );

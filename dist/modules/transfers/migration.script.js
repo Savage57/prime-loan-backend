@@ -50,7 +50,7 @@ function migrateTransactions() {
                             traceId: tx.session_id || tx._id.toString(), // fallback if no traceId
                             fromAccount: user.user_metadata.accountNo, // default assumption
                             toAccount: tx.account_number,
-                            amount: tx.amount * 100, // convert naira → kobo
+                            amount: tx.amount, // convert naira → kobo
                             transferType: "inter", // legacy didn’t distinguish intra/inter
                             status: normalizeStatus(tx.status),
                             reference: tx.transaction_number,

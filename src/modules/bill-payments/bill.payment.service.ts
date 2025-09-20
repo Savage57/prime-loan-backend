@@ -8,6 +8,7 @@ import { VfdProvider, TransferRequest } from '../../shared/providers/vfd.provide
 import User from '../users/user.model';
 import { sha512 } from 'js-sha512';
 import { InitiateBillPaymentRequest, ServiceType } from './bill-payment.interface';
+import { BillPayment } from './bill-payment.model';
 
 function requireExtra<T>(
   value: T | undefined,
@@ -213,5 +214,71 @@ export class BillPaymentService {
         return {...(await vfdProvider.transfer(transferReq)), reference: result.reference};
       }
     });
+  }
+
+  static async getUserBillPayments(userId: string, page = 1, limit = 20, status?: string, type?: string, search?: string) {
+    const skip = (page - 1) * limit;
+    
+    const query: any = { userId };
+    if (status) query.status = status;
+    if (status) query.serviceType = type;
+
+    if (search) {
+      const regex = new RegExp(search, "i"); // case-insensitive search
+      query.$or = [
+        { "traceId": regex },
+        { "providerRef": regex },
+        { "customerReference": regex },
+      ];
+    }
+
+    const billPayments = await BillPayment.find(query)
+      .populate('userId', 'email user_metadata.first_name user_metadata.surname')
+      .skip(skip)
+      .limit(limit)
+      .sort({ createdAt: -1 })
+      .lean();
+    
+    const total = await BillPayment.countDocuments(query); 
+
+    return {
+      billPayments,
+      page,
+      pages: Math.ceil(total / limit),
+      total
+    };
+  }
+
+  static async getBillPayments(page = 1, limit = 20, status?: string, type?: string, search?: string) {
+    const skip = (page - 1) * limit;
+    
+    const query: any = {};
+    if (status) query.status = status;
+    if (status) query.serviceType = type;
+
+    if (search) {
+      const regex = new RegExp(search, "i"); // case-insensitive search
+      query.$or = [
+        { "traceId": regex },
+        { "providerRef": regex },
+        { "customerReference": regex },
+      ];
+    }
+
+    const billPayments = await BillPayment.find(query)
+      .populate('userId', 'email user_metadata.first_name user_metadata.surname')
+      .skip(skip)
+      .limit(limit)
+      .sort({ createdAt: -1 })
+      .lean();
+    
+    const total = await BillPayment.countDocuments(query); 
+
+    return {
+      billPayments,
+      page,
+      pages: Math.ceil(total / limit),
+      total
+    };
   }
 }
