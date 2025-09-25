@@ -390,6 +390,8 @@ router.post("/update-password-pin", validateReqBody(updatePasswordOrPinSchema), 
  */
 router.get("/:adminId([0-9a-fA-F]{24})", verifyJwtRest(), AdminController.getAdmin as any);
 
+router.get("/admins", verifyJwtRest(), AdminController.getAdmins as any);
+
 /**
  * @swagger
  * /backoffice/activate:

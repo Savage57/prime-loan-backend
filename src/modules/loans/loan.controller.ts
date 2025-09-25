@@ -14,6 +14,7 @@ import { SettingsService } from "../admin/settings.service";
 import { checkPermission } from "../../shared/utils/checkPermission";
 import { getMailsByPermission } from "../../shared/utils/checkPermission";
 import { NotificationService } from "../notifications/notification.service";
+import { UserService } from "../users/user.service";
 
 export class LoanController {
   /**
@@ -320,6 +321,8 @@ export class LoanController {
 
       let history = await LoanService.listLoansForUser(loan?.userId || "trx-id", page, limit);
 
+      let user = await UserService.getUser(loan?.userId || "ux-id");
+
       if (history.data.length > 0) {
         history.data = history.data.filter((item) => item._id !== id);
       }
@@ -328,6 +331,7 @@ export class LoanController {
         status: "success",
         data: {
           loan,
+          user,
           history,
         },
       });

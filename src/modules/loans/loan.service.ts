@@ -254,6 +254,9 @@ export class LoanService {
     // Build and persist loan record
     const loanPayload: Partial<ILoan> = {
       ...params,
+      percentage: typeof params.percentage === "string" 
+      ? Number(String(params.percentage).replace("%", "")) 
+      : params.percentage,
       userId: params.userId,
       requested_amount: params.amount,
       amount: params.amount, // store Naira
@@ -613,6 +616,8 @@ export class LoanService {
     requiredParam("loanId", loanId);
     requiredParam("reason", reason);
 
+    console.log(" In reject loan")
+
     const loan = await Loan.findById(loanId);
     if (!loan) throw new NotFoundError("Loan not found");
     if (loan.status === "accepted") throw new BadRequestError("Cannot reject accepted loan");
@@ -621,6 +626,9 @@ export class LoanService {
     loan.outstanding = 0;
     loan.rejectionReason = reason;
     loan.status = "rejected";
+    loan.percentage = typeof loan.percentage === "string" 
+    ? Number(String(loan.percentage).replace("%", "")) 
+    : loan.percentage,
     loan.adminAction = {
       adminId,
       action: "Reject",

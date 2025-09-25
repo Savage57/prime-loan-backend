@@ -158,7 +158,7 @@ export class AdminService {
   }
 
   async getAdmins() {
-    const admin = await User.find({ });
+    const admin = await User.find({ role: "admin" });
     if (!admin) throw new NotFoundError('No admin found');
     
     return admin;
@@ -382,8 +382,12 @@ export class AdminService {
     
     const total = await Transfer.countDocuments(query); 
 
+    const userIds = transfers.map(p => p.userId);
+    const users = await User.find({ _id: { $in: userIds } }, { email: 1, user_metadata: 1 });
+
     return {
       transfers,
+      users,
       page,
       pages: Math.ceil(total / limit),
       total
